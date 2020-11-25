@@ -13,6 +13,9 @@ def main():
     parser.add_argument('category_slug', type=str, help='racetime.gg category')
     parser.add_argument('client_id', type=str, help='racetime.gg client ID')
     parser.add_argument('client_secret', type=str, help='racetime.gg client secret')
+    parser.add_argument('--rando_path', default='/opt/git/github.com/Roman971/OoT-Randomizer/master', help='use the randomizer and RSL script at this path')
+    parser.add_argument('--output_path', default='/var/www/ootr.fenhl.net/seed', help='save patch files to this path')
+    parser.add_argument('--base_uri', default='https://ootr.fenhl.net/seed/', help='add the patch filename to this prefix to generate the link')
     parser.add_argument('--verbose', '-v', action='store_true', help='verbose output')
     parser.add_argument('--host', type=str, nargs='?', help='change the ractime.gg host (debug only!')
     parser.add_argument('--insecure', action='store_true', help='don\'t use HTTPS (debug only!)')
@@ -37,6 +40,9 @@ def main():
         RandoBot.racetime_secure = False
 
     inst = RandoBot(
+        rando_path=args.rando_path,
+        output_path=args.output_path,
+        base_uri=args.base_uri,
         #ootr_api_key=args.ootr_api_key, #TODO (see above)
         category_slug=args.category_slug,
         client_id=args.client_id,

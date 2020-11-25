@@ -1,5 +1,11 @@
+import asyncio
+import pathlib
+import subprocess
+
 from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
+NUM_RANDO_RANDO_TRIES = 20
+NUM_TRIES_PER_SETTINGS = 20
 
 class RandoHandler(RaceHandler):
     """
@@ -7,9 +13,12 @@ class RandoHandler(RaceHandler):
     """
     stop_at = ['cancelled', 'finished']
 
-    def __init__(self, **kwargs): #TODO take zsr
+    def __init__(self, rando_path, output_path, base_uri, **kwargs): #TODO take zsr
         super().__init__(**kwargs)
 
+        self.rando_path = rando_path
+        self.output_path = output_path
+        self.base_uri = base_uri
         #self.zsr = zsr
         #self.presets = zsr.load_presets() #TODO add support for co-op/multiworld?
         self.seed_rolled = False
@@ -168,7 +177,49 @@ class RandoHandler(RaceHandler):
             )
             return
 
-        seed_uri = self.zsr.roll_seed(self.presets[preset], encrypt) #TODO replace with local seed rolling
+        for _ in range(NUM_RANDO_RANDO_TRIES):
+            try:
+                process = await asyncio.create_subprocess_exec('python3', 'PlandoRandomSettings.py', cwd=pathlib.Path(self.rando_path) / 'plando-random-settings', check=True)
+                await process.wait()
+            except subprocess.CalledProcessError:
+                continue
+            else:
+                for _ in range(NUM_TRIES_PER_SETTINGS):
+                    try:
+                        process = await asyncio.create_subprocess_exec('python3', 'OoTRandmizer.py', f'--settings={pathlib.Path(__file__).parent.parent/ "settings.json"}', cwd=pathlib.Path(self.rando_path), check=True)
+                        await process.wait()
+                    except subprocess.CalledProcessError:
+                        continue
+                    else:
+                        break
+                else:
+                    continue
+                break
+        else:
+            await self.send_message(
+                'Sorry %(reply_to)s, I couldn\'t generate the seed. (Tried %(outer_tries)d settings each %(inner_tries)d times)'
+                % {'reply_to': reply_to or 'friend', 'outer_tries': NUM_RANDO_RANDO_TRIES, 'inner_tries': NUM_TRIES_PER_SETTINGS}
+            )
+            return
+
+        patch_files = list((pathlib.Path(self.rando_path) / 'rsl-outputs').glob('*.zpf')) #TODO parse filename from output
+        if len(patch_files) == 0:
+            await self.send_message(
+                'Sorry %(reply_to)s, something went wrong while generating the seed. (Patch file not found)'
+                % {'reply_to': reply_to or 'friend'}
+            )
+            return
+        elif len(patch_files) > 1:
+            await self.send_message(
+                'Sorry %(reply_to)s, something went wrong while generating the seed. (Multiple patch files found)'
+                % {'reply_to': reply_to or 'friend'}
+            )
+            return
+        filename = patch_files[0].name
+        patch_files[0].rename(pathlib.Path(self.output_path) / filename)
+        for unused_file in (pathlib.Path(self.rando_path) / 'rsl-outputs').glob(f'{patch_files[0].stem}_*.json'):
+            unused_file.unlink()
+        seed_uri = self.base_uri + filename
 
         await self.send_message(
             '%(reply_to)s, here is your seed: %(seed_uri)s'
