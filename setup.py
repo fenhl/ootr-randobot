@@ -2,8 +2,8 @@ from setuptools import find_packages, setup
 
 
 setup(
-    name='ootr-randobot',
-    description='racetime.gg bot for generating OoTR seeds.',
+    name='ootr-rslbot',
+    description='racetime.gg bot for generating OoTR Random Settings League seeds.',
     license='MIT',
     classifiers=[
         'Development Status :: 5 - Production/Stable',
@@ -15,7 +15,7 @@ setup(
     ],
     url='https://racetime.gg/ootr',
     project_urls={
-        'Source': 'https://github.com/deains/ootr-randobot',
+        'Source': 'https://github.com/fenhl/ootr-randobot',
     },
     version='1.0.0',
     install_requires=[

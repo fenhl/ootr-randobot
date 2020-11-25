@@ -7,12 +7,19 @@ class RandoHandler(RaceHandler):
     """
     stop_at = ['cancelled', 'finished']
 
-    def __init__(self, zsr, **kwargs):
+    def __init__(self, **kwargs): #TODO take zsr
         super().__init__(**kwargs)
 
-        self.zsr = zsr
-        self.presets = zsr.load_presets()
+        #self.zsr = zsr
+        #self.presets = zsr.load_presets() #TODO add support for co-op/multiworld?
         self.seed_rolled = False
+
+    def should_stop(self):
+        return (
+            self.data.get('goal', {}).get('name') != 'Random settings league':
+            or self.data.get('goal', {}).get('custom', False)
+            or super().should_stop()
+        )
 
     async def begin(self):
         """
@@ -20,15 +27,15 @@ class RandoHandler(RaceHandler):
         """
         if not self.state.get('intro_sent') and not self._race_in_progress():
             await self.send_message(
-                'Welcome to OoTR! Create a seed with !seed <preset>'
+                'Welcome to the OoTR Random Settings League! Create a seed with !seed'
             )
             await self.send_message(
-                'If no preset is selected, weekly settings will be used. '
+                #'If no preset is selected, default RSL settings will be used. ' #TODO
                 'Use !spoilerseed to generate a seed with a spoiler log.'
             )
-            await self.send_message(
-                'For a list of presets, use !presets'
-            )
+            #await self.send_message( #TODO
+            #    'For a list of presets, use !presets'
+            #)
             self.state['intro_sent'] = True
         if 'locked' not in self.state:
             self.state['locked'] = False
@@ -77,13 +84,13 @@ class RandoHandler(RaceHandler):
             return
         await self.roll_and_send(args, message, False)
 
-    async def ex_presets(self, args, message):
-        """
-        Handle !presets commands.
-        """
-        if self._race_in_progress():
-            return
-        await self.send_presets()
+    #async def ex_presets(self, args, message): #TODO
+    #    """
+    #    Handle !presets commands.
+    #    """
+    #    if self._race_in_progress():
+    #        return
+    #    await self.send_presets()
 
     async def ex_fpa(self, args, message):
         if len(args) == 1 and args[0] in ('on', 'off'):
@@ -142,7 +149,7 @@ class RandoHandler(RaceHandler):
             return
 
         await self.roll(
-            preset=args[0] if args else 'weekly',
+            preset=args[0] if args else 'rsl',
             encrypt=encrypt,
             reply_to=reply_to,
         )
@@ -151,15 +158,17 @@ class RandoHandler(RaceHandler):
         """
         Generate a seed and send it to the race room.
         """
-        if preset not in self.presets:
+        #if preset not in self.presets:
+        if preset != 'rsl': #TODO
             await self.send_message(
-                'Sorry %(reply_to)s, I don\'t recognise that preset. Use '
-                '!presets to see what is available.'
+                #'Sorry %(reply_to)s, I don\'t recognise that preset. Use '
+                #'!presets to see what is available.'
+                'Sorry %(reply_to)s, I can currently only roll rsl seeds.' #TODO
                 % {'reply_to': reply_to or 'friend'}
             )
             return
 
-        seed_uri = self.zsr.roll_seed(self.presets[preset], encrypt)
+        seed_uri = self.zsr.roll_seed(self.presets[preset], encrypt) #TODO replace with local seed rolling
 
         await self.send_message(
             '%(reply_to)s, here is your seed: %(seed_uri)s'
