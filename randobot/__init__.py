@@ -13,7 +13,7 @@ def main():
     parser.add_argument('category_slug', type=str, help='racetime.gg category')
     parser.add_argument('client_id', type=str, help='racetime.gg client ID')
     parser.add_argument('client_secret', type=str, help='racetime.gg client secret')
-    parser.add_argument('--rando_path', default='/opt/git/github.com/Roman971/OoT-Randomizer/master', help='use the randomizer and RSL script at this path')
+    parser.add_argument('--rando_path', default='/usr/local/share/fenhl/OoT-Randomizer', help='use the randomizer and RSL script at this path')
     parser.add_argument('--output_path', default='/var/www/ootr.fenhl.net/seed', help='save patch files to this path')
     parser.add_argument('--base_uri', default='https://ootr.fenhl.net/seed/', help='add the patch filename to this prefix to generate the link')
     parser.add_argument('--verbose', '-v', action='store_true', help='verbose output')
