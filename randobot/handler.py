@@ -16,7 +16,7 @@ class RandoHandler(RaceHandler):
 
     def should_stop(self):
         return (
-            self.data.get('goal', {}).get('name') != 'Random settings league':
+            self.data.get('goal', {}).get('name') != 'Random settings league'
             or self.data.get('goal', {}).get('custom', False)
             or super().should_stop()
         )
