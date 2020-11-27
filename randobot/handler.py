@@ -41,8 +41,7 @@ class RandoHandler(RaceHandler):
                 'Welcome to the OoTR Random Settings League! Create a seed with !seed'
             )
             #await self.send_message(
-            #    'If no preset is selected, default RSL settings will be used. ' #TODO
-            #    'Use !spoilerseed to generate a seed with a spoiler log.' #TODO
+            #    'If no preset is selected, default RSL settings will be used.' #TODO
             #)
             #await self.send_message( #TODO
             #    'For a list of presets, use !presets'
@@ -85,15 +84,7 @@ class RandoHandler(RaceHandler):
         """
         if self._race_in_progress():
             return
-        await self.roll_and_send(args, message, True)
-
-    #async def ex_spoilerseed(self, args, message):
-    #    """
-    #    Handle !race commands.
-    #    """
-    #    if self._race_in_progress():
-    #        return
-    #    await self.roll_and_send(args, message, False)
+        await self.roll_and_send(args, message)
 
     #async def ex_presets(self, args, message): #TODO
     #    """
@@ -138,7 +129,7 @@ class RandoHandler(RaceHandler):
             reply_to = message.get('user', {}).get('name', 'friend')
             await self.send_message(resp % {'reply_to': reply_to})
 
-    async def roll_and_send(self, args, message, encrypt):
+    async def roll_and_send(self, args, message):
         """
         Read an incoming !seed or !race command, and generate a new seed if
         valid.
@@ -161,11 +152,15 @@ class RandoHandler(RaceHandler):
 
         await self.roll(
             preset=args[0] if args else 's2',
-            encrypt=encrypt,
             reply_to=reply_to,
         )
 
-    async def roll(self, preset, encrypt, reply_to):
+    async def race_data(self, data):
+        super().race_data(data)
+        if self.data.get('status', {}).get('value') in ('finished', 'cancelled'):
+            self.send_spoiler()
+
+    async def roll(self, preset, reply_to):
         """
         Generate a seed and send it to the race room.
         """
@@ -219,11 +214,12 @@ class RandoHandler(RaceHandler):
                 % {'reply_to': reply_to or 'friend'}
             )
             return
-        filename = patch_files[0].name
-        patch_files[0].rename(pathlib.Path(self.output_path) / filename)
-        for unused_file in (pathlib.Path(self.rando_path) / 'rsl-outputs').glob(f'{patch_files[0].stem}_*.json'):
-            unused_file.unlink()
-        seed_uri = self.base_uri + filename
+        file_name = patch_files[0].name
+        file_stem = patch_files[0].stem
+        patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
+        (pathlib.Path(self.rando_path) / 'rsl-outputs' / f'{file_stem}_Distribution.json').unlink()
+        seed_uri = self.base_uri + file_name
+        self.state['file_stem'] = file_stem
 
         await self.send_message(
             '%(reply_to)s, here is your seed: %(seed_uri)s'
@@ -240,6 +236,16 @@ class RandoHandler(RaceHandler):
         await self.send_message('Available presets:')
         for name, full_name in self.presets.items():
             await self.send_message(f'{name} – {full_name}')
+
+    async def send_spoiler(self):
+        if 'file_stem' in self.state and not self.state.get('spoiler_sent', False):
+            spoiler_filename = self.state['file_stem'] + '_Spoiler.json'
+            (pathlib.Path(self.rando_path) / 'rsl-outputs' / spoiler_filename).rename(pathlib.Path(self.output_path) / spoiler_filename)
+            await self.send_message(
+                'here is the spoiler log: %(spoiler_uri)s'
+                % {'spoiler_uri': self.base_uri + spoiler_filename}
+            )
+            self.state['spoiler_sent'] = True
 
     def _race_in_progress(self):
         return self.data.get('status').get('value') in ('pending', 'in_progress')

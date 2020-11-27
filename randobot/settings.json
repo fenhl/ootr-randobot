@@ -3,7 +3,7 @@
     "output_dir": "rsl-outputs",
     "enable_distribution_file": true,
     "distribution_file": "plando-random-settings/blind_random_settings.json",
-    "create_spoiler": false,
+    "create_spoiler": true,
     "create_cosmetics_log": false,
     "compress_rom": "Patch"
 }
