@@ -160,7 +160,7 @@ class RandoHandler(RaceHandler):
             return
 
         await self.roll(
-            preset=args[0] if args else 'rsl',
+            preset=args[0] if args else 's2',
             encrypt=encrypt,
             reply_to=reply_to,
         )
@@ -170,11 +170,11 @@ class RandoHandler(RaceHandler):
         Generate a seed and send it to the race room.
         """
         #if preset not in self.presets:
-        if preset != 'rsl': #TODO
+        if preset != 's2': #TODO
             await self.send_message(
                 #'Sorry %(reply_to)s, I don\'t recognise that preset. Use '
                 #'!presets to see what is available.'
-                'Sorry %(reply_to)s, I can currently only roll rsl seeds.' #TODO
+                'Sorry %(reply_to)s, I can currently only roll RSL season 2 seeds.' #TODO
                 % {'reply_to': reply_to or 'friend'}
             )
             return
