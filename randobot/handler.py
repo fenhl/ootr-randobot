@@ -156,9 +156,9 @@ class RandoHandler(RaceHandler):
         )
 
     async def race_data(self, data):
-        super().race_data(data)
+        await super().race_data(data)
         if self.data.get('status', {}).get('value') in ('finished', 'cancelled'):
-            self.send_spoiler()
+            await self.send_spoiler()
 
     async def roll(self, preset, reply_to):
         """
