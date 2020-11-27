@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import pathlib
 import subprocess
 
@@ -219,13 +220,20 @@ class RandoHandler(RaceHandler):
         patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
         (pathlib.Path(self.rando_path) / 'rsl-outputs' / f'{file_stem}_Distribution.json').unlink()
         seed_uri = self.base_uri + file_name
-        self.state['file_stem'] = file_stem
+        self.state['spoiler_log'] = file_stem + '_Spoiler.json'
 
         await self.send_message(
             '%(reply_to)s, here is your seed: %(seed_uri)s'
             % {'reply_to': reply_to or 'Okay', 'seed_uri': seed_uri}
         )
         await self.set_raceinfo(seed_uri)
+
+        with contextlib.suppress(Exception):
+            with (pathlib.Path(self.rando_path) / 'rsl-outputs' / self.state['spoiler_log']).open() as f:
+                await self.send_message(
+                    'The hash is %(file_hash)s.'
+                    % {'file_hash': ', '.join(json.load(f)['file_hash'])}
+                )
 
         self.state['seed_rolled'] = True
 
@@ -238,12 +246,11 @@ class RandoHandler(RaceHandler):
             await self.send_message(f'{name} – {full_name}')
 
     async def send_spoiler(self):
-        if 'file_stem' in self.state and not self.state.get('spoiler_sent', False):
-            spoiler_filename = self.state['file_stem'] + '_Spoiler.json'
-            (pathlib.Path(self.rando_path) / 'rsl-outputs' / spoiler_filename).rename(pathlib.Path(self.output_path) / spoiler_filename)
+        if 'spoiler_log' in self.state and not self.state.get('spoiler_sent', False):
+            (pathlib.Path(self.rando_path) / 'rsl-outputs' / self.state['spoiler_log']).rename(pathlib.Path(self.output_path) / self.state['spoiler_log'])
             await self.send_message(
                 'here is the spoiler log: %(spoiler_uri)s'
-                % {'spoiler_uri': self.base_uri + spoiler_filename}
+                % {'spoiler_uri': self.base_uri + self.state['spoiler_log']}
             )
             self.state['spoiler_sent'] = True
 
