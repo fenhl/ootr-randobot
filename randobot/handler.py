@@ -38,10 +38,10 @@ class RandoHandler(RaceHandler):
             await self.send_message(
                 'Welcome to the OoTR Random Settings League! Create a seed with !seed'
             )
-            await self.send_message(
-                #'If no preset is selected, default RSL settings will be used. ' #TODO
-                'Use !spoilerseed to generate a seed with a spoiler log.'
-            )
+            #await self.send_message(
+            #    'If no preset is selected, default RSL settings will be used. ' #TODO
+            #    'Use !spoilerseed to generate a seed with a spoiler log.' #TODO
+            #)
             #await self.send_message( #TODO
             #    'For a list of presets, use !presets'
             #)
@@ -85,13 +85,13 @@ class RandoHandler(RaceHandler):
             return
         await self.roll_and_send(args, message, True)
 
-    async def ex_spoilerseed(self, args, message):
-        """
-        Handle !race commands.
-        """
-        if self._race_in_progress():
-            return
-        await self.roll_and_send(args, message, False)
+    #async def ex_spoilerseed(self, args, message):
+    #    """
+    #    Handle !race commands.
+    #    """
+    #    if self._race_in_progress():
+    #        return
+    #    await self.roll_and_send(args, message, False)
 
     #async def ex_presets(self, args, message): #TODO
     #    """
