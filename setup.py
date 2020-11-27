@@ -27,4 +27,6 @@ setup(
             'randobot=randobot:main',
         ],
     },
+    package_data={'': ['settings.json']},
+    include_package_data=True,
 )
