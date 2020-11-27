@@ -34,6 +34,8 @@ class RandoHandler(RaceHandler):
         """
         Send introduction messages.
         """
+        if self.should_stop():
+            return
         if not self.state.get('intro_sent') and not self._race_in_progress():
             await self.send_message(
                 'Welcome to the OoTR Random Settings League! Create a seed with !seed'
