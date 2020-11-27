@@ -179,15 +179,17 @@ class RandoHandler(RaceHandler):
 
         for _ in range(NUM_RANDO_RANDO_TRIES):
             try:
-                process = await asyncio.create_subprocess_exec('python3', 'PlandoRandomSettings.py', cwd=pathlib.Path(self.rando_path) / 'plando-random-settings', check=True)
-                await process.wait()
+                process = await asyncio.create_subprocess_exec('python3', 'PlandoRandomSettings.py', cwd=pathlib.Path(self.rando_path) / 'plando-random-settings')
+                if await process.wait() != 0:
+                    continue
             except subprocess.CalledProcessError:
                 continue
             else:
                 for _ in range(NUM_TRIES_PER_SETTINGS):
                     try:
-                        process = await asyncio.create_subprocess_exec('python3', 'OoTRandmizer.py', f'--settings={pathlib.Path(__file__).parent.parent/ "settings.json"}', cwd=pathlib.Path(self.rando_path), check=True)
-                        await process.wait()
+                        process = await asyncio.create_subprocess_exec('python3', 'OoTRandmizer.py', f'--settings={pathlib.Path(__file__).parent.parent/ "settings.json"}', cwd=pathlib.Path(self.rando_path))
+                        if await process.wait() != 0:
+                            continue
                     except subprocess.CalledProcessError:
                         continue
                     else:
