@@ -5,7 +5,7 @@ import subprocess
 from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
 NUM_RANDO_RANDO_TRIES = 20
-NUM_TRIES_PER_SETTINGS = 20
+NUM_TRIES_PER_SETTINGS = 3
 
 class RandoHandler(RaceHandler):
     """
@@ -187,7 +187,7 @@ class RandoHandler(RaceHandler):
             else:
                 for _ in range(NUM_TRIES_PER_SETTINGS):
                     try:
-                        process = await asyncio.create_subprocess_exec('python3', 'OoTRandmizer.py', f'--settings={pathlib.Path(__file__).parent.parent/ "settings.json"}', cwd=pathlib.Path(self.rando_path))
+                        process = await asyncio.create_subprocess_exec('python3', 'OoTRandomizer.py', f'--settings={pathlib.Path(__file__).parent.parent/ "settings.json"}', cwd=pathlib.Path(self.rando_path))
                         if await process.wait() != 0:
                             continue
                     except subprocess.CalledProcessError:
