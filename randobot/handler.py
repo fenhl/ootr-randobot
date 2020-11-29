@@ -250,7 +250,7 @@ class RandoHandler(RaceHandler):
         if 'spoiler_log' in self.state and not self.state.get('spoiler_sent', False):
             (pathlib.Path(self.rando_path) / 'rsl-outputs' / self.state['spoiler_log']).rename(pathlib.Path(self.output_path) / self.state['spoiler_log'])
             await self.send_message(
-                'here is the spoiler log: %(spoiler_uri)s'
+                'Here is the spoiler log: %(spoiler_uri)s'
                 % {'spoiler_uri': self.base_uri + self.state['spoiler_log']}
             )
             self.state['spoiler_sent'] = True
