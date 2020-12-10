@@ -1,0 +1,16 @@
+[Unit]
+Description=racetime.gg bot for the Ocarina of Time Randomizer's Random Settings League
+Documentation=https://github.com/fenhl/ootr-randobot
+After=network.target
+
+[Service]
+Restart=always
+ExecStartPre=/usr/bin/git pull --ff-only
+ExecStartPre=+/usr/bin/python3 setup.py install
+ExecStart=/usr/local/bin/randobot ootr DGgAUaeDds43ctuoGMeFiOVUM7W5g2bkmlOKoKqo assets/client-secret.txt
+User=fenhl
+Group=fenhl
+WorkingDirectory=/opt/git/github.com/fenhl/ootr-randobot/branch/rsl
+
+[Install]
+WantedBy=multi-user.target
