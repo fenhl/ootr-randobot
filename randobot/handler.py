@@ -8,6 +8,7 @@ from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
 NUM_RANDO_RANDO_TRIES = 20
 NUM_TRIES_PER_SETTINGS = 3
+GEN_LOCK = asyncio.Lock()
 
 class RandoHandler(RaceHandler):
     """
@@ -152,11 +153,11 @@ class RandoHandler(RaceHandler):
             )
             return
         await self.send_message('Rolling seed…') #TODO also announce position in queue (#5)
-
-        await self.roll(
-            preset=args[0] if args else 's2',
-            reply_to=reply_to,
-        )
+        async with GEN_LOCK:
+            await self.roll(
+                preset=args[0] if args else 's2',
+                reply_to=reply_to,
+            )
 
     async def race_data(self, data):
         await super().race_data(data)
