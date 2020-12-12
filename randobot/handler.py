@@ -151,6 +151,7 @@ class RandoHandler(RaceHandler):
                 'Don\'t get greedy!'
             )
             return
+        await self.send_message('Rolling seed…') #TODO also announce position in queue (#5)
 
         await self.roll(
             preset=args[0] if args else 's2',
