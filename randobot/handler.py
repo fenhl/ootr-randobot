@@ -6,8 +6,6 @@ import subprocess
 
 from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
-NUM_RANDO_RANDO_TRIES = 20
-NUM_TRIES_PER_SETTINGS = 3
 GEN_LOCK = asyncio.Lock()
 
 class RandoHandler(RaceHandler):
@@ -16,10 +14,10 @@ class RandoHandler(RaceHandler):
     """
     stop_at = ['cancelled', 'finished']
 
-    def __init__(self, rando_path, output_path, base_uri, **kwargs): #TODO take zsr
+    def __init__(self, rsl_script_path, output_path, base_uri, **kwargs): #TODO take zsr
         super().__init__(**kwargs)
 
-        self.rando_path = rando_path
+        self.rsl_script_path = pathlib.Path(rsl_script_path)
         self.output_path = output_path
         self.base_uri = base_uri
         #self.zsr = zsr
@@ -158,7 +156,7 @@ class RandoHandler(RaceHandler):
         await self.send_message('Rolling seed…') #TODO also announce position in queue (#5)
         async with GEN_LOCK:
             await self.roll(
-                preset=args[0] if args else 's2',
+                preset=args[0] if args else 'league',
                 reply_to=reply_to,
             )
 
@@ -172,7 +170,7 @@ class RandoHandler(RaceHandler):
         Generate a seed and send it to the race room.
         """
         #if preset not in self.presets:
-        if preset != 's2': #TODO
+        if preset != 'league': #TODO
             await self.send_message(
                 #'Sorry %(reply_to)s, I don\'t recognise that preset. Use '
                 #'!presets to see what is available.'
@@ -181,34 +179,18 @@ class RandoHandler(RaceHandler):
             )
             return
 
-        for _ in range(NUM_RANDO_RANDO_TRIES):
-            try:
-                process = await asyncio.create_subprocess_exec('python3', 'PlandoRandomSettings.py', cwd=pathlib.Path(self.rando_path) / 'plando-random-settings')
-                if await process.wait() != 0:
-                    continue
-            except subprocess.CalledProcessError:
+        try:
+            process = await asyncio.create_subprocess_exec('python3', 'PlandoRandomSettings.py', cwd=self.rsl_script_path)
+            if await process.wait() != 0:
                 continue
-            else:
-                for _ in range(NUM_TRIES_PER_SETTINGS):
-                    try:
-                        process = await asyncio.create_subprocess_exec('python3', 'OoTRandomizer.py', f'--settings={pathlib.Path(__file__).parent / "settings.json"}', cwd=pathlib.Path(self.rando_path))
-                        if await process.wait() != 0:
-                            continue
-                    except subprocess.CalledProcessError:
-                        continue
-                    else:
-                        break
-                else:
-                    continue
-                break
-        else:
+        except subprocess.CalledProcessError:
             await self.send_message(
-                'Sorry %(reply_to)s, I couldn\'t generate the seed. (Tried %(outer_tries)d settings each %(inner_tries)d times)'
-                % {'reply_to': reply_to or 'friend', 'outer_tries': NUM_RANDO_RANDO_TRIES, 'inner_tries': NUM_TRIES_PER_SETTINGS}
+                'Sorry %(reply_to)s, I couldn\'t generate the seed. (Tried 3 settings each 3 times)'
+                % {'reply_to': reply_to or 'friend'}
             )
             return
 
-        patch_files = list((pathlib.Path(self.rando_path) / 'rsl-outputs').glob('*.zpf')) #TODO parse filename from output
+        patch_files = list((self.rsl_script_path / 'patches').glob('*.zpf')) #TODO parse filename from output
         if len(patch_files) == 0:
             await self.send_message(
                 'Sorry %(reply_to)s, something went wrong while generating the seed. (Patch file not found)'
@@ -224,7 +206,7 @@ class RandoHandler(RaceHandler):
         file_name = patch_files[0].name
         file_stem = patch_files[0].stem
         patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
-        (pathlib.Path(self.rando_path) / 'rsl-outputs' / f'{file_stem}_Distribution.json').unlink()
+        (self.rsl_script_path / 'patches' / f'{file_stem}_Distribution.json').unlink()
         seed_uri = self.base_uri + file_name
         self.state['spoiler_log'] = file_stem + '_Spoiler.json'
 
@@ -235,7 +217,7 @@ class RandoHandler(RaceHandler):
         await self.set_raceinfo(seed_uri)
 
         with contextlib.suppress(Exception):
-            with (pathlib.Path(self.rando_path) / 'rsl-outputs' / self.state['spoiler_log']).open() as f:
+            with (self.rsl_script_path / 'patches' / self.state['spoiler_log']).open() as f:
                 await self.send_message(
                     'The hash is %(file_hash)s.'
                     % {'file_hash': ', '.join(json.load(f)['file_hash'])}
@@ -253,7 +235,7 @@ class RandoHandler(RaceHandler):
 
     async def send_spoiler(self):
         if 'spoiler_log' in self.state and not self.state.get('spoiler_sent', False):
-            (pathlib.Path(self.rando_path) / 'rsl-outputs' / self.state['spoiler_log']).rename(pathlib.Path(self.output_path) / self.state['spoiler_log'])
+            (self.rsl_script_path / 'patches' / self.state['spoiler_log']).rename(pathlib.Path(self.output_path) / self.state['spoiler_log'])
             await self.send_message(
                 'Here is the spoiler log: %(spoiler_uri)s'
                 % {'spoiler_uri': self.base_uri + self.state['spoiler_log']}

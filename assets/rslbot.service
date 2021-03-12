@@ -10,7 +10,7 @@ ExecStartPre=+/usr/bin/python3 setup.py install
 ExecStart=/usr/local/bin/randobot ootr DGgAUaeDds43ctuoGMeFiOVUM7W5g2bkmlOKoKqo assets/client-secret.txt
 User=fenhl
 Group=fenhl
-WorkingDirectory=/opt/git/github.com/fenhl/rslbot/branch/rsl
+WorkingDirectory=/opt/git/github.com/fenhl/rslbot/master
 
 [Install]
 WantedBy=multi-user.target

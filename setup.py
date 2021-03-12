@@ -17,7 +17,7 @@ setup(
     project_urls={
         'Source': 'https://github.com/fenhl/ootr-randobot',
     },
-    version='1.0.0',
+    version='2.0.0',
     install_requires=[
         'racetime_bot>=1.5.0,<2.0',
     ],
