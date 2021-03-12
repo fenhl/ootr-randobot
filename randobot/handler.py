@@ -1,3 +1,5 @@
+import sys
+
 import asyncio
 import contextlib
 import json
@@ -14,14 +16,24 @@ class RandoHandler(RaceHandler):
     """
     stop_at = ['cancelled', 'finished']
 
-    def __init__(self, rsl_script_path, output_path, base_uri, **kwargs): #TODO take zsr
+    def __init__(self, rsl_script_path, output_path, base_uri, **kwargs):
         super().__init__(**kwargs)
 
         self.rsl_script_path = pathlib.Path(rsl_script_path)
         self.output_path = output_path
         self.base_uri = base_uri
-        #self.zsr = zsr
-        #self.presets = zsr.load_presets() #TODO add support for co-op/multiworld?
+        self.presets = {
+            'league': 'Random Settings League (default)',
+            'ddr': 'Random Settings DDR',
+            'coop': 'Random Settings Co-Op',
+            'multiworld': 'Random Settings Multiworld',
+        }
+        self.preset_aliases = {
+            'rsl': 'league',
+            'solo': 'league',
+            'co-op': 'coop',
+            'mw': 'multiworld',
+        }
         self.seed_rolled = False
 
     def should_stop(self):
@@ -42,14 +54,14 @@ class RandoHandler(RaceHandler):
             self.state['intro_sent'] = True
         if not self.state.get('intro_sent') and not self._race_in_progress():
             await self.send_message(
-                'Welcome to the OoTR Random Settings League! Create a seed with !seed'
+                'Welcome to the OoTR Random Settings League! Create a seed with !seed <preset>'
             )
-            #await self.send_message(
-            #    'If no preset is selected, default RSL settings will be used.' #TODO
-            #)
-            #await self.send_message( #TODO
-            #    'For a list of presets, use !presets'
-            #)
+            await self.send_message(
+                'If no preset is selected, default RSL settings will be used. For a list of presets, use !presets'
+            )
+            await self.send_message(
+                'I will post the spoiler log after the race.'
+            )
             self.state['intro_sent'] = True
         if 'locked' not in self.state:
             self.state['locked'] = False
@@ -90,13 +102,13 @@ class RandoHandler(RaceHandler):
             return
         await self.roll_and_send(args, message)
 
-    #async def ex_presets(self, args, message): #TODO
-    #    """
-    #    Handle !presets commands.
-    #    """
-    #    if self._race_in_progress():
-    #        return
-    #    await self.send_presets()
+    async def ex_presets(self, args, message):
+        """
+        Handle !presets commands.
+        """
+        if self._race_in_progress():
+            return
+        await self.send_presets()
 
     async def ex_fpa(self, args, message):
         if len(args) == 1 and args[0] in ('on', 'off'):
@@ -135,8 +147,7 @@ class RandoHandler(RaceHandler):
 
     async def roll_and_send(self, args, message):
         """
-        Read an incoming !seed or !race command, and generate a new seed if
-        valid.
+        Read an incoming !seed command, and generate a new seed if valid.
         """
         reply_to = message.get('user', {}).get('name')
 
@@ -153,39 +164,69 @@ class RandoHandler(RaceHandler):
                 'Don\'t get greedy!'
             )
             return
+
+        if len(args) >= 1:
+            if preset not in self.presets:
+                await self.send_message(
+                    'Sorry %(reply_to)s, I don\'t recognise that preset. Use '
+                    '!presets to see what is available.'
+                    % {'reply_to': reply_to or 'friend'}
+                )
+                return
+            preset = self.preset_aliases.get(args[0], args[0])
+        else:
+            preset = 'league'
+        if preset == 'multiworld':
+            if len(args) == 2:
+                try:
+                    world_count = int(args[1])
+                except ValueError:
+                    await self.send_message('World count must be a number')
+                    return
+                if world_count < 2:
+                    await self.send_message('World count must be at least 2')
+                    return
+                if world_count > 15:
+                    await self.send_message('Sorry, I can only roll seeds with up to 15 worlds. Please download the RSL script from https://github.com/matthewkirby/plando-random-settings to roll seeds for more than 15 players.')
+                    return
+            else:
+                await self.send_message('Missing world count (e.g. “!seed multiworld 2” for 2 worlds)')
+                return
+        else:
+            if len(args) > 1:
+                await self.send_message('Unexpected parameter')
+                return
+            else:
+                world_count = 1
+
         await self.send_message('Rolling seed…') #TODO also announce position in queue (#5)
         async with GEN_LOCK:
-            await self.roll(
-                preset=args[0] if args else 'league',
-                reply_to=reply_to,
-            )
+            await self.roll(preset, world_count, reply_to)
 
     async def race_data(self, data):
         await super().race_data(data)
         if self.data.get('status', {}).get('value') in ('finished', 'cancelled'):
             await self.send_spoiler()
 
-    async def roll(self, preset, reply_to):
+    async def roll(self, preset, world_count, reply_to):
         """
         Generate a seed and send it to the race room.
         """
-        #if preset not in self.presets:
-        if preset != 'league': #TODO
-            await self.send_message(
-                #'Sorry %(reply_to)s, I don\'t recognise that preset. Use '
-                #'!presets to see what is available.'
-                'Sorry %(reply_to)s, I can currently only roll RSL season 2 seeds.' #TODO
-                % {'reply_to': reply_to or 'friend'}
-            )
-            return
+        args = [sys.executable, 'PlandoRandomSettings.py']
+        if preset != 'league':
+            args.append(f'--override={preset}_override.json')
 
         try:
-            process = await asyncio.create_subprocess_exec('python3', 'PlandoRandomSettings.py', cwd=self.rsl_script_path)
+            process = await asyncio.create_subprocess_exec(*args, cwd=self.rsl_script_path)
             if await process.wait() != 0:
-                continue
+                await self.send_message(
+                    'Sorry %(reply_to)s, something went wrong while generating the seed. (RSL script crashed, please notify Fenhl or try again)' #TODO read output, give different error messages
+                    % {'reply_to': reply_to or 'friend'}
+                )
+                return
         except subprocess.CalledProcessError:
             await self.send_message(
-                'Sorry %(reply_to)s, I couldn\'t generate the seed. (Tried 3 settings each 3 times)'
+                'Sorry %(reply_to)s, something went wrong while generating the seed. (RSL script missing, please notify Fenhl)'
                 % {'reply_to': reply_to or 'friend'}
             )
             return
@@ -193,13 +234,13 @@ class RandoHandler(RaceHandler):
         patch_files = list((self.rsl_script_path / 'patches').glob('*.zpf')) #TODO parse filename from output
         if len(patch_files) == 0:
             await self.send_message(
-                'Sorry %(reply_to)s, something went wrong while generating the seed. (Patch file not found)'
+                'Sorry %(reply_to)s, something went wrong while generating the seed. (Patch file not found, please notify Fenhl)'
                 % {'reply_to': reply_to or 'friend'}
             )
             return
         elif len(patch_files) > 1:
             await self.send_message(
-                'Sorry %(reply_to)s, something went wrong while generating the seed. (Multiple patch files found)'
+                'Sorry %(reply_to)s, something went wrong while generating the seed. (Multiple patch files found, please notify Fenhl)'
                 % {'reply_to': reply_to or 'friend'}
             )
             return

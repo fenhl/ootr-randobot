@@ -9,7 +9,6 @@ def main():
     parser = argparse.ArgumentParser(
         description='RandoBot, because OoTR seeds weren\'t scary enough already.',
     )
-    #parser.add_argument('ootr_api_key', type=str, help='ootrandomizer.com API key') #TODO reenable once Dev-R is available on ootrandomizer.com
     parser.add_argument('category_slug', type=str, help='racetime.gg category')
     parser.add_argument('client_id', type=str, help='racetime.gg client ID')
     parser.add_argument('client_secret_path', type=str, help='path to file containing racetime.gg client secret')
@@ -46,7 +45,6 @@ def main():
         rsl_script_path=args.rsl_script_path,
         output_path=args.output_path,
         base_uri=args.base_uri,
-        #ootr_api_key=args.ootr_api_key, #TODO (see above)
         category_slug=args.category_slug,
         client_id=args.client_id,
         client_secret=client_secret,
