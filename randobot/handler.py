@@ -280,11 +280,10 @@ class RandoHandler(RaceHandler):
     async def send_spoiler(self):
         if 'spoiler_log' in self.state and not self.state.get('spoiler_sent', False):
             (self.rsl_script_path / 'patches' / self.state['spoiler_log']).rename(pathlib.Path(self.output_path) / self.state['spoiler_log'])
-            await self.send_message(
-                'Here is the spoiler log: %(spoiler_uri)s'
-                % {'spoiler_uri': self.base_uri + self.state['spoiler_log']}
-            )
+            spoiler_uri = self.base_uri + self.state['spoiler_log']
+            await self.send_message(f'Here is the spoiler log: {spoiler_uri}')
             self.state['spoiler_sent'] = True
+            await self.set_raceinfo(f'Spoiler log: {spoiler_uri}')
 
     def _race_in_progress(self):
         return self.data.get('status').get('value') in ('pending', 'in_progress')
