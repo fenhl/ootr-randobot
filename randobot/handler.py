@@ -24,6 +24,8 @@ class RandoHandler(RaceHandler):
         self.base_uri = base_uri
         self.presets = {
             'league': 'Random Settings League (default)',
+            'beginner': 'Random Settings for beginners',
+            'intermediate': 'a step between Beginner and League',
             'ddr': 'Random Settings DDR',
             'coop': 'Random Settings Co-Op',
             'multiworld': 'Random Settings Multiworld',
@@ -166,6 +168,7 @@ class RandoHandler(RaceHandler):
             return
 
         if len(args) >= 1:
+            preset = self.preset_aliases.get(args[0].lower(), args[0].lower())
             if preset not in self.presets:
                 await self.send_message(
                     'Sorry %(reply_to)s, I don\'t recognise that preset. Use '
@@ -173,7 +176,6 @@ class RandoHandler(RaceHandler):
                     % {'reply_to': reply_to or 'friend'}
                 )
                 return
-            preset = self.preset_aliases.get(args[0], args[0])
         else:
             preset = 'league'
         if preset == 'multiworld':
