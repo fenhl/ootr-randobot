@@ -255,7 +255,10 @@ class RandoHandler(RaceHandler):
             '%(reply_to)s, here is your seed: %(seed_uri)s'
             % {'reply_to': reply_to or 'Okay', 'seed_uri': seed_uri}
         )
-        await self.set_raceinfo(seed_uri)
+        new_raceinfo = f'Seed: {seed_uri}'
+        if preset != 'league' and not self.data.get('info'):
+            new_raceinfo = f'{self.presets[preset]} | {new_raceinfo}'
+        await self.set_raceinfo(new_raceinfo)
 
         with contextlib.suppress(Exception):
             with (self.rsl_script_path / 'patches' / self.state['spoiler_log']).open() as f:
