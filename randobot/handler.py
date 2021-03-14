@@ -51,9 +51,11 @@ class RandoHandler(RaceHandler):
         """
         if self.should_stop():
             return
-        if self.data.get('info', '').startswith(self.base_uri):
-            self.state['spoiler_log'] = self.data['info'][len(self.base_uri):].split('.zpf')[0] + '_Spoiler.json'
-            self.state['intro_sent'] = True
+        for section in self.data.get('info', '').split(' | '):
+            if section.startswith(self.base_uri):
+                self.state['spoiler_log'] = section[len(self.base_uri):].split('.zpf')[0] + '_Spoiler.json'
+                self.state['intro_sent'] = True
+                break
         if not self.state.get('intro_sent') and not self._race_in_progress():
             await self.send_message(
                 'Welcome to the OoTR Random Settings League! Create a seed with !seed <preset>'
@@ -257,10 +259,13 @@ class RandoHandler(RaceHandler):
             '%(reply_to)s, here is your seed: %(seed_uri)s'
             % {'reply_to': reply_to or 'Okay', 'seed_uri': seed_uri}
         )
-        new_raceinfo = f'Seed: {seed_uri}'
-        if preset != 'league' and not self.data.get('info'):
-            new_raceinfo = f'{self.presets[preset]} | {new_raceinfo}'
-        await self.set_raceinfo(new_raceinfo)
+        if preset == 'league':
+            new_raceinfo = f'Random Settings League | Seed: {seed_uri}'
+            overwrite = True
+        else:
+            new_raceinfo = f'{self.presets[preset]} | Seed: {seed_uri}'
+            overwrite = False
+        await self.set_raceinfo(new_raceinfo, overwrite, prefix=False)
 
         with contextlib.suppress(Exception):
             with (self.rsl_script_path / 'patches' / self.state['spoiler_log']).open() as f:
@@ -285,7 +290,7 @@ class RandoHandler(RaceHandler):
             spoiler_uri = self.base_uri + self.state['spoiler_log']
             await self.send_message(f'Here is the spoiler log: {spoiler_uri}')
             self.state['spoiler_sent'] = True
-            await self.set_raceinfo(f'Spoiler log: {spoiler_uri}')
+            await self.set_raceinfo(f'Spoiler log: {spoiler_uri}', prefix=False)
 
     def _race_in_progress(self):
         return self.data.get('status').get('value') in ('pending', 'in_progress')
