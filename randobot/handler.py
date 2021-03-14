@@ -216,7 +216,7 @@ class RandoHandler(RaceHandler):
         """
         Generate a seed and send it to the race room.
         """
-        args = [sys.executable, 'PlandoRandomSettings.py']
+        args = [sys.executable, 'RandomSettingsGenerator.py']
         if preset != 'league':
             args.append(f'--override={preset}_override.json')
 
