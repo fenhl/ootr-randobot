@@ -222,31 +222,28 @@ class RandoHandler(RaceHandler):
 
         try:
             process = await asyncio.create_subprocess_exec(*args, cwd=self.rsl_script_path)
-            if await process.wait() != 0:
-                await self.send_message(
-                    'Sorry %(reply_to)s, something went wrong while generating the seed. (RSL script crashed, please notify Fenhl or try again)' #TODO read output, give different error messages
-                    % {'reply_to': reply_to or 'friend'}
-                )
+            exit_code = await process.wait()
+            if exit_code == 0:
+                pass
+            elif exit_code == 1:
+                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (RSL script crashed, please notify Fenhl)')
+                return
+            elif exit_code == 2:
+                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Max retries exceeded, please try again or notify Fenhl)')
+                return
+            else:
+                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Error code {exit_code}, please notify Fenhl)')
                 return
         except subprocess.CalledProcessError:
-            await self.send_message(
-                'Sorry %(reply_to)s, something went wrong while generating the seed. (RSL script missing, please notify Fenhl)'
-                % {'reply_to': reply_to or 'friend'}
-            )
+            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (RSL script missing, please notify Fenhl)')
             return
 
         patch_files = list((self.rsl_script_path / 'patches').glob('*.zpf')) #TODO parse filename from output
         if len(patch_files) == 0:
-            await self.send_message(
-                'Sorry %(reply_to)s, something went wrong while generating the seed. (Patch file not found, please notify Fenhl)'
-                % {'reply_to': reply_to or 'friend'}
-            )
+            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Patch file not found, please notify Fenhl)')
             return
         elif len(patch_files) > 1:
-            await self.send_message(
-                'Sorry %(reply_to)s, something went wrong while generating the seed. (Multiple patch files found, please notify Fenhl)'
-                % {'reply_to': reply_to or 'friend'}
-            )
+            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Multiple patch files found, please notify Fenhl)')
             return
         file_name = patch_files[0].name
         file_stem = patch_files[0].stem
