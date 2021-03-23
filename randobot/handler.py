@@ -248,7 +248,9 @@ class RandoHandler(RaceHandler):
         file_name = patch_files[0].name
         file_stem = patch_files[0].stem
         patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
-        (self.rsl_script_path / 'patches' / f'{file_stem}_Distribution.json').unlink()
+        for extra_output_path in [self.rsl_script_path / 'patches' / f'{file_stem}_Cosmetics.json', self.rsl_script_path / 'patches' / f'{file_stem}_Distribution.json']:
+            if extra_output_path.exists():
+                extra_output_path.unlink()
         seed_uri = self.base_uri + file_name
         self.state['spoiler_log'] = file_stem + '_Spoiler.json'
 
