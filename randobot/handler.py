@@ -52,8 +52,8 @@ class RandoHandler(RaceHandler):
         if self.should_stop():
             return
         for section in self.data.get('info', '').split(' | '):
-            if section.startswith(self.base_uri):
-                self.state['spoiler_log'] = section[len(self.base_uri):].split('.zpf')[0] + '_Spoiler.json'
+            if section.startswith(f'Seed: {self.base_uri}'):
+                self.state['spoiler_log'] = section[len(f'Seed: {self.base_uri}'):].split('.zpf')[0] + '_Spoiler.json'
                 self.state['intro_sent'] = True
                 break
         if not self.state.get('intro_sent') and not self._race_in_progress():
