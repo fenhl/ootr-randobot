@@ -6,8 +6,11 @@ import json
 import pathlib
 import subprocess
 
+import lazyjson # https://github.com/fenhl/lazyjson
+
 from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
+DATA = lazyjson.File('/usr/local/share/fenhl/ootr-web.json')
 GEN_LOCK = asyncio.Lock()
 
 class RandoHandler(RaceHandler):
@@ -209,6 +212,9 @@ class RandoHandler(RaceHandler):
 
     async def race_data(self, data):
         await super().race_data(data)
+        if self.data.get('started_at') is not None:
+            with contextlib.suppress(Exception):
+                DATA['races'][self.state['file_stem']]['startTime'] = self.data['started_at']
         if self.data.get('status', {}).get('value') in ('finished', 'cancelled'):
             await self.send_spoiler()
 
@@ -247,6 +253,7 @@ class RandoHandler(RaceHandler):
             return
         file_name = patch_files[0].name
         file_stem = patch_files[0].stem
+        self.state['file_stem'] = file_stem
         patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
         for extra_output_path in [self.rsl_script_path / 'patches' / f'{file_stem}_Cosmetics.json', self.rsl_script_path / 'patches' / f'{file_stem}_Distribution.json']:
             if extra_output_path.exists():
@@ -266,6 +273,8 @@ class RandoHandler(RaceHandler):
             overwrite = False
         await self.set_raceinfo(new_raceinfo, overwrite, prefix=False)
 
+        with contextlib.suppress(Exception):
+            DATA['races'][file_stem] = {'roomSlug': self.data['slug']}
         with contextlib.suppress(Exception):
             with (self.rsl_script_path / 'patches' / self.state['spoiler_log']).open() as f:
                 await self.send_message(

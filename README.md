@@ -13,6 +13,7 @@ possible to use this bot without suitable API access.
 
 * systemd
 * Python 3.7 or greater
+* [lazyjson](https://github.com/fenhl/lazyjson)
 * A copy of [the RSL script](https://github.com/matthewkirby/plando-random-settings). By default, the bot expects this to be in `/opt/git/github.com/matthewkirby/plando-random-settings/master`, you can use the `--rsl_script_path` option to change this.
     * A ROM of *The Legend of Zelda: Ocarina of Time* (version 1.0, NTSC) at the subpath `data/oot-ntscu-1.0.z64`.
 * A web server that can serve the patch files and spoiler logs from the output directory (which is `/var/www/ootr.fenhl.net/seed` by default and can be changed using `--output_path`).
