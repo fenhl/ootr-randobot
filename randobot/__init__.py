@@ -1,6 +1,9 @@
+import sys
+
+sys.path.append('/opt/py')
+
 import argparse
 import logging
-import sys
 
 from .bot import RandoBot
 
