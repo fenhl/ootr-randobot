@@ -54,6 +54,7 @@ class RandoHandler(RaceHandler):
         """
         if self.should_stop():
             return
+        asyncio.create_task(self.heartbeat(), name=f'heartbeat for {self.data.get("name")}')
         for section in self.data.get('info', '').split(' | '):
             if section.startswith(f'Seed: {self.base_uri}'):
                 self.state['spoiler_log'] = section[len(f'Seed: {self.base_uri}'):].split('.zpf')[0] + '_Spoiler.json'
@@ -74,6 +75,11 @@ class RandoHandler(RaceHandler):
             self.state['locked'] = False
         if 'fpa' not in self.state:
             self.state['fpa'] = False
+
+    async def heartbeat(self):
+        while True:
+            await asyncio.sleep(20)
+            await self.ws.send(json.dumps({'action': 'ping'}))
 
     @monitor_cmd
     async def ex_lock(self, args, message):
