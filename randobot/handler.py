@@ -77,7 +77,7 @@ class RandoHandler(RaceHandler):
             self.state['fpa'] = False
 
     async def heartbeat(self):
-        while True:
+        while not self.should_stop():
             await asyncio.sleep(20)
             await self.ws.send(json.dumps({'action': 'ping'}))
 
