@@ -221,8 +221,16 @@ class RandoHandler(RaceHandler):
         if self.data.get('started_at') is not None:
             with contextlib.suppress(Exception):
                 DATA['races'][self.state['file_stem']]['startTime'] = self.data['started_at']
-        if self.data.get('status', {}).get('value') in ('finished', 'cancelled'):
+            if self.data.get('status', {}).get('value') in ('finished', 'cancelled'):
+                await self.send_spoiler()
+        elif self.data.get('status', {}).get('value') == 'finished':
             await self.send_spoiler()
+        elif self.data.get('status', {}).get('value') == 'cancelled':
+            with contextlib.suppress(Exception):
+                (pathlib.Path(self.output_path) / f'{self.state["file_stem"]}.zpf').unlink(missing_ok=True)
+                (pathlib.Path(self.output_path) / f'{self.state["file_stem"]}.zpfz').unlink(missing_ok=True)
+                (pathlib.Path(self.output_path) / f'{self.state["file_stem"]}_Spoiler.json').unlink(missing_ok=True)
+                del DATA['races'][self.state['file_stem']]
 
     async def roll(self, preset, world_count, reply_to):
         """
