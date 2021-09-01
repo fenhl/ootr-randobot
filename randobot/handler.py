@@ -2,8 +2,10 @@ import sys
 
 import asyncio
 import contextlib
+import datetime
 import json
 import pathlib
+import re
 import subprocess
 
 import lazyjson # https://github.com/fenhl/lazyjson
@@ -12,6 +14,53 @@ from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
 DATA = lazyjson.File('/usr/local/share/fenhl/ootr-web.json')
 GEN_LOCK = asyncio.Lock()
+
+def natjoin(sequence, default):
+    if len(sequence) == 0:
+        return str(default)
+    elif len(sequence) == 1:
+        return str(sequence[0])
+    elif len(sequence) == 2:
+        return f'{sequence[0]} and {sequence[1]}'
+    else:
+        return ', '.join(sequence[:-1]) + f', and {sequence[-1]}'
+
+def format_duration(duration):
+    parts = []
+    hours, duration = divmod(duration, datetime.timedelta(hours=1))
+    if hours > 0:
+        parts.append(f'{hours} hour{"" if hours == 1 else "s"}')
+    minutes, duration = divmod(duration, datetime.timedelta(minutes=1))
+    if minutes > 0:
+        parts.append(f'{minutes} minute{"" if minutes == 1 else "s"}')
+    if duration > datetime.timedelta():
+        seconds = duration.total_seconds()
+        parts.append(f'{seconds} second{"" if seconds == 1 else "s"}')
+    return natjoin(parts, '0 seconds')
+
+def format_breaks(duration, interval):
+    return f'{format_duration(duration)} every {format_duration(interval)}'
+
+def parse_duration(args):
+    if len(args) == 0:
+        raise ValueError('Empty duration args')
+    duration = datetime.timedelta()
+    for arg in args:
+        arg = arg.lower()
+        while len(arg) > 0:
+            match = re.match('([0-9]+)([smh]?)', arg)
+            if not match:
+                raise ValueError('Unknown duration format')
+            duration += datetime.timedelta(**{
+                {
+                    '': 'minutes',
+                    's': 'seconds',
+                    'm': 'minutes',
+                    'h': 'hours'
+                }[match.group(2)]: float(match.group(1))
+            })
+            arg = arg[len(match.group(0)):]
+    return duration
 
 class RandoHandler(RaceHandler):
     """
@@ -75,11 +124,28 @@ class RandoHandler(RaceHandler):
             self.state['locked'] = False
         if 'fpa' not in self.state:
             self.state['fpa'] = False
+        if 'breaks' not in self.state:
+            self.state['breaks'] = None
 
     async def heartbeat(self):
         while not self.should_stop():
             await asyncio.sleep(20)
             await self.ws.send(json.dumps({'action': 'ping'}))
+
+    async def break_notifications(self):
+        duration, interval = self.state['breaks']
+        await asyncio.sleep((interval - datetime.timedelta(minutes=5)).total_seconds())
+        while not self.should_stop():
+            asyncio.create_task(self.send_message('@entrants Reminder: Next break in 5 minutes.'))
+            await asyncio.sleep(datetime.timedelta(minutes=5).total_seconds())
+            if self.should_stop():
+                break
+            asyncio.create_task(self.send_message(f'@entrants Break time! Please pause for {format_duration(duration)}.'))
+            await asyncio.sleep(duration.total_seconds())
+            if self.should_stop():
+                break
+            asyncio.create_task(self.send_message('@entrants Break ended. You may resume playing.'))
+            await asyncio.sleep((interval - duration - datetime.timedelta(minutes=5)).total_seconds())
 
     @monitor_cmd
     async def ex_lock(self, args, message):
@@ -158,6 +224,36 @@ class RandoHandler(RaceHandler):
             reply_to = message.get('user', {}).get('name', 'friend')
             await self.send_message(resp % {'reply_to': reply_to})
 
+    async def ex_breaks(self, args, message):
+        if self._race_in_progress():
+            return
+        if len(args) == 0:
+            if self.state['breaks'] is None:
+                await self.send_message('Breaks are currently disabled. Example command to enable: !breaks 5m every 2h30')
+            else:
+                await self.send_message(f'Breaks are currently set to {format_breaks(*self.state["breaks"])}. Disable with !breaks off')
+        elif len(args) == 1 and args[0] == 'off':
+            self.state['breaks'] = None
+            await self.send_message('Breaks are now disabled.')
+        else:
+            reply_to = message.get('user', {}).get('name')
+            try:
+                sep_idx = args.index('every')
+                duration = parse_duration(args[:sep_idx])
+                interval = parse_duration(args[sep_idx + 1:])
+            except ValueError:
+                await self.send_message(f'Sorry {reply_to or "friend"}, I don\'t recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off')
+            else:
+                if duration < datetime.timedelta(minutes=1):
+                    await self.send_message(f'Sorry {reply_to or "friend"}, minimum break time (if enabled at all) is 1 minute. You can disable breaks entirely with !breaks off')
+                elif interval < duration + datetime.timedelta(minutes=5):
+                    await self.send_message(f'Sorry {reply_to or "friend"}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.')
+                elif duration + interval >= datetime.timedelta(hours=24):
+                    await self.send_message(f'Sorry {reply_to or "friend"}, race rooms are automatically closed after 24 hours so these breaks wouldn\'t work.')
+                else:
+                    self.state['breaks'] = duration, interval
+                    await self.send_message(f'Breaks set to {format_breaks(duration, interval)}.')
+
     async def roll_and_send(self, args, message):
         """
         Read an incoming !seed command, and generate a new seed if valid.
@@ -219,6 +315,9 @@ class RandoHandler(RaceHandler):
     async def race_data(self, data):
         await super().race_data(data)
         if self.data.get('started_at') is not None:
+            if not self.state.get('break_notifications_started') and self.state['breaks'] is not None:
+                self.state['break_notifications_started'] = True
+                asyncio.create_task(self.break_notifications(), name=f'break notifications for {self.data.get("name")}')
             with contextlib.suppress(Exception):
                 DATA['races'][self.state['file_stem']]['startTime'] = self.data['started_at']
             if self.data.get('status', {}).get('value') in ('finished', 'cancelled'):
