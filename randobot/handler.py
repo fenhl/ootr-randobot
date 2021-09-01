@@ -315,7 +315,7 @@ class RandoHandler(RaceHandler):
     async def race_data(self, data):
         await super().race_data(data)
         if self.data.get('started_at') is not None:
-            if not self.state.get('break_notifications_started') and self.state['breaks'] is not None:
+            if not self.state.get('break_notifications_started') and self.state.get('breaks') is not None:
                 self.state['break_notifications_started'] = True
                 asyncio.create_task(self.break_notifications(), name=f'break notifications for {self.data.get("name")}')
             with contextlib.suppress(Exception):
