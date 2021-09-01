@@ -41,24 +41,29 @@ def format_duration(duration):
 def format_breaks(duration, interval):
     return f'{format_duration(duration)} every {format_duration(interval)}'
 
-def parse_duration(args):
+def parse_duration(args, default):
     if len(args) == 0:
         raise ValueError('Empty duration args')
     duration = datetime.timedelta()
     for arg in args:
         arg = arg.lower()
         while len(arg) > 0:
-            match = re.match('([0-9]+)([smh]?)', arg)
+            match = re.match('([0-9]+)([smh:]?)', arg)
             if not match:
                 raise ValueError('Unknown duration format')
-            duration += datetime.timedelta(**{
-                {
-                    '': 'minutes',
-                    's': 'seconds',
-                    'm': 'minutes',
-                    'h': 'hours'
-                }[match.group(2)]: float(match.group(1))
-            })
+            unit = {
+                '': default,
+                's': 'seconds',
+                'm': 'minutes',
+                'h': 'hours',
+                ':': 'default'
+            }[match.group(2)]
+            default = {
+                'hours': 'minutes',
+                'minutes': 'seconds',
+                'seconds': 'seconds'
+            }[unit]
+            duration += datetime.timedelta(**{unit: float(match.group(1))})
             arg = arg[len(match.group(0)):]
     return duration
 
@@ -239,8 +244,8 @@ class RandoHandler(RaceHandler):
             reply_to = message.get('user', {}).get('name')
             try:
                 sep_idx = args.index('every')
-                duration = parse_duration(args[:sep_idx])
-                interval = parse_duration(args[sep_idx + 1:])
+                duration = parse_duration(args[:sep_idx], default='minutes')
+                interval = parse_duration(args[sep_idx + 1:], default='hours')
             except ValueError:
                 await self.send_message(f'Sorry {reply_to or "friend"}, I don\'t recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off')
             else:
