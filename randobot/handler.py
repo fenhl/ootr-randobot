@@ -80,12 +80,30 @@ class RandoHandler(RaceHandler):
         self.output_path = output_path
         self.base_uri = base_uri
         self.presets = {
-            'league': 'Random Settings League (default)',
-            'beginner': 'Random Settings for beginners',
-            'intermediate': 'a step between Beginner and League',
-            'ddr': 'Random Settings DDR',
-            'coop': 'Random Settings Co-Op',
-            'multiworld': 'Random Settings Multiworld',
+            'league': {
+                'info': 'Random Settings League',
+                'help': 'Random Settings League (default)'
+            },
+            'beginner': {
+                'info': 'Random Settings for beginners',
+                'help': 'random settings for beginners, see https://ootr.fenhl.net/static/rsl-beginner-weights.html for details'
+            },
+            'intermediate': {
+                'info': 'Intermediate Random settings',
+                'help': 'a step between Beginner and League'
+            },
+            'ddr': {
+                'info': 'Random Settings DDR',
+                'help': 'same as League but with cutscenes useful for tricks in the DDR ruleset'
+            },
+            'coop': {
+                'info': 'Random Settings Co-Op',
+                'help': 'random settings Co-Op'
+            },
+            'multiworld': {
+                'info': 'Random Settings Multiworld',
+                'help': 'roll with !seed multiworld <worldcount>'
+            }
         }
         self.preset_aliases = {
             'rsl': 'league',
@@ -385,13 +403,7 @@ class RandoHandler(RaceHandler):
             '%(reply_to)s, here is your seed: %(seed_uri)s'
             % {'reply_to': reply_to or 'Okay', 'seed_uri': seed_uri}
         )
-        if preset == 'league':
-            new_raceinfo = f'Random Settings League | Seed: {seed_uri}'
-            overwrite = True
-        else:
-            new_raceinfo = f'{self.presets[preset]} | Seed: {seed_uri}'
-            overwrite = False
-        await self.set_raceinfo(new_raceinfo, overwrite, prefix=False)
+        await self.set_raceinfo(f'{self.presets[preset]["info"]} | Seed: {seed_uri}', overwrite=preset == 'league', prefix=False)
 
         with contextlib.suppress(Exception):
             DATA['races'][file_stem] = {
@@ -412,8 +424,8 @@ class RandoHandler(RaceHandler):
         Send a list of known presets to the race room.
         """
         await self.send_message('Available presets:')
-        for name, full_name in self.presets.items():
-            await self.send_message(f'{name} – {full_name}')
+        for name, data in self.presets.items():
+            await self.send_message(f'{name} – {data["help"]}')
 
     async def send_spoiler(self):
         if 'spoiler_log' in self.state and not self.state.get('spoiler_sent', False):
