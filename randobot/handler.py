@@ -343,6 +343,8 @@ class RandoHandler(RaceHandler):
         args = [sys.executable, 'RandomSettingsGenerator.py']
         if preset != 'league':
             args.append(f'--override={preset}_override.json')
+        if world_count != 1:
+            args.append(f'--worldcount={world_count}')
 
         try:
             process = await asyncio.create_subprocess_exec(*args, cwd=self.rsl_script_path)
