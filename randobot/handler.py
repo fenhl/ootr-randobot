@@ -392,7 +392,10 @@ class RandoHandler(RaceHandler):
         await self.set_raceinfo(new_raceinfo, overwrite, prefix=False)
 
         with contextlib.suppress(Exception):
-            DATA['races'][file_stem] = {'roomSlug': self.data['slug']}
+            DATA['races'][file_stem] = {
+                'roomSlug': self.data['slug'],
+                'weights': preset
+            }
         with contextlib.suppress(Exception):
             with (self.rsl_script_path / 'patches' / self.state['spoiler_log']).open() as f:
                 await self.send_message(
