@@ -94,7 +94,7 @@ class RandoHandler(RaceHandler):
             },
             'ddr': {
                 'info': 'Random Settings DDR',
-                'help': 'same as League but with cutscenes useful for tricks in the DDR ruleset'
+                'help': 'League but always normal damage and with cutscenes useful for tricks in the DDR ruleset'
             },
             'coop': {
                 'info': 'Random Settings Co-Op',
