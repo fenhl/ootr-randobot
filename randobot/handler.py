@@ -8,6 +8,8 @@ import pathlib
 import re
 import subprocess
 
+import requests # PyPI: requests
+
 import lazyjson # https://github.com/fenhl/lazyjson
 
 from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
@@ -73,9 +75,10 @@ class RandoHandler(RaceHandler):
     """
     stop_at = ['cancelled', 'finished']
 
-    def __init__(self, rsl_script_path, output_path, base_uri, **kwargs):
+    def __init__(self, ootr_api_key, rsl_script_path, output_path, base_uri, **kwargs):
         super().__init__(**kwargs)
 
+        self.ootr_api_key = ootr_api_key
         self.rsl_script_path = pathlib.Path(rsl_script_path)
         self.output_path = output_path
         self.base_uri = base_uri
@@ -129,7 +132,13 @@ class RandoHandler(RaceHandler):
         asyncio.create_task(self.heartbeat(), name=f'heartbeat for {self.data.get("name")}')
         for section in self.data.get('info', '').split(' | '):
             if section.startswith(f'Seed: {self.base_uri}'):
-                self.state['spoiler_log'] = section[len(f'Seed: {self.base_uri}'):].split('.zpf')[0] + '_Spoiler.json'
+                self.state['spoiler_log_path'] = section[len(f'Seed: {self.base_uri}'):].split('.zpf')[0] + '_Spoiler.json'
+                with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open() as f:
+                    self.state['file_hash'] = json.load(f)['file_hash']
+                self.state['intro_sent'] = True
+                break
+            elif section.startswith('Seed: https://ootrandomizer.com/seed/get?id='):
+                self.state['seed_id'] = section[len('Seed: https://ootrandomizer.com/seed/get?id='):]
                 self.state['intro_sent'] = True
                 break
         if not self.state.get('intro_sent') and not self._race_in_progress():
@@ -140,7 +149,7 @@ class RandoHandler(RaceHandler):
                 'If no preset is selected, default RSL settings will be used. For a list of presets, use !presets'
             )
             await self.send_message(
-                'I will post the spoiler log after the race.'
+                'The spoiler log will be available on the seed page after the race.'
             )
             self.state['intro_sent'] = True
         if 'locked' not in self.state:
@@ -342,17 +351,17 @@ class RandoHandler(RaceHandler):
                 self.state['break_notifications_started'] = True
                 asyncio.create_task(self.break_notifications(), name=f'break notifications for {self.data.get("name")}')
             with contextlib.suppress(Exception):
-                DATA['races'][self.state['file_stem']]['startTime'] = self.data['started_at']
+                DATA['races'][self.data['slug']]['startTime'] = self.data['started_at']
             if self.data.get('status', {}).get('value') in ('finished', 'cancelled'):
                 await self.send_spoiler()
         elif self.data.get('status', {}).get('value') == 'finished':
             await self.send_spoiler()
         elif self.data.get('status', {}).get('value') == 'cancelled':
             with contextlib.suppress(Exception):
+                del DATA['races'][self.data['slug']]
                 (pathlib.Path(self.output_path) / f'{self.state["file_stem"]}.zpf').unlink(missing_ok=True)
                 (pathlib.Path(self.output_path) / f'{self.state["file_stem"]}.zpfz').unlink(missing_ok=True)
                 (pathlib.Path(self.output_path) / f'{self.state["file_stem"]}_Spoiler.json').unlink(missing_ok=True)
-                del DATA['races'][self.state['file_stem']]
 
     async def roll(self, preset, world_count, reply_to):
         """
@@ -361,7 +370,9 @@ class RandoHandler(RaceHandler):
         args = [sys.executable, 'RandomSettingsGenerator.py']
         if preset != 'league':
             args.append(f'--override={preset}_override.json')
-        if world_count != 1:
+        if world_count == 1:
+            args.append('--no_seed')
+        else:
             args.append(f'--worldcount={world_count}')
 
         try:
@@ -382,22 +393,42 @@ class RandoHandler(RaceHandler):
             await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (RSL script missing, please notify Fenhl)')
             return
 
-        patch_files = list((self.rsl_script_path / 'patches').glob('*.zpf')) #TODO parse filename from output
-        if len(patch_files) == 0:
-            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Patch file not found, please notify Fenhl)')
-            return
-        elif len(patch_files) > 1:
-            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Multiple patch files found, please notify Fenhl)')
-            return
-        file_name = patch_files[0].name
-        file_stem = patch_files[0].stem
-        self.state['file_stem'] = file_stem
-        patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
-        for extra_output_path in [self.rsl_script_path / 'patches' / f'{file_stem}_Cosmetics.json', self.rsl_script_path / 'patches' / f'{file_stem}_Distribution.json']:
-            if extra_output_path.exists():
-                extra_output_path.unlink()
-        seed_uri = self.base_uri + file_name
-        self.state['spoiler_log'] = file_stem + '_Spoiler.json'
+        if world_count == 1:
+            with (self.rsl_script_path / 'version.py').open() as version_f:
+                for line in version_f:
+                    if line.startswith('randomizer_version ='):
+                        rando_version = line.split("'")[1]
+                        base_version = rando_version.split(' ')[0]
+                        break
+                else:
+                    raise RuntimeError('could not parse randomizer version from plando-random-settings version file')
+            with (self.rsl_script_path / 'data' / 'randomizer_settings.json').open() as rando_settings_f:
+                rando_settings = json.load(rando_settings_f)
+            with open(rando_settings['distribution_file']) as distribution_f:
+                distribution = json.load(distribution_f)
+            resp = requests.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings'])
+            resp.raise_for_status()
+            self.state['seed_id'] = str(resp.json()['id'])
+            seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
+        else:
+            patch_files = list((self.rsl_script_path / 'patches').glob('*.zpfz')) #TODO parse filename from output
+            if len(patch_files) == 0:
+                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Patch file not found, please notify Fenhl)')
+                return
+            elif len(patch_files) > 1:
+                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Multiple patch files found, please notify Fenhl)')
+                return
+            file_name = patch_files[0].name
+            file_stem = patch_files[0].stem
+            self.state['file_stem'] = file_stem
+            patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
+            for extra_output_path in [self.rsl_script_path / 'patches' / f'{file_stem}_Cosmetics.json', self.rsl_script_path / 'patches' / f'{file_stem}_Distribution.json']:
+                if extra_output_path.exists():
+                    extra_output_path.unlink()
+            seed_uri = self.base_uri + file_name
+            self.state['spoiler_log_path'] = file_stem + '_Spoiler.json'
+            with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open() as f:
+                self.state['file_hash'] = json.load(f)['file_hash']
 
         await self.send_message(
             '%(reply_to)s, here is your seed: %(seed_uri)s'
@@ -406,16 +437,30 @@ class RandoHandler(RaceHandler):
         await self.set_raceinfo(f'{self.presets[preset]["info"]} | Seed: {seed_uri}', overwrite=preset == 'league', prefix=False)
 
         with contextlib.suppress(Exception):
-            DATA['races'][file_stem] = {
-                'roomSlug': self.data['slug'],
-                'weights': preset
-            }
+            if 'seed_id' in self.state:
+                while True:
+                    resp = requests.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
+                    if resp.status_code == 204:
+                        await asyncio.sleep(1)
+                        continue
+                    resp.raise_for_status()
+                    self.state['file_hash'] = resp.json()['spoilerLog']['file_hash']
+                    break
+
+                #TODO save spoiler log and download patch file for seed archive
+
+                DATA['races'][self.data['slug']] = {
+                    'seedID': self.state['seed_id'],
+                    'fileHash': self.state['file_hash'],
+                    'weights': preset
+                }
+            else:
+                DATA['races'][self.data['slug']] = {
+                    'fileStem': file_stem,
+                    'weights': preset
+                }
         with contextlib.suppress(Exception):
-            with (self.rsl_script_path / 'patches' / self.state['spoiler_log']).open() as f:
-                await self.send_message(
-                    'The hash is %(file_hash)s.'
-                    % {'file_hash': ', '.join(json.load(f)['file_hash'])}
-                )
+            await self.send_message(f'The hash is {", ".join(self.state["file_hash"])}.')
 
         self.state['seed_rolled'] = True
 
@@ -428,12 +473,18 @@ class RandoHandler(RaceHandler):
             await self.send_message(f'{name} – {data["help"]}')
 
     async def send_spoiler(self):
-        if 'spoiler_log' in self.state and not self.state.get('spoiler_sent', False):
-            (self.rsl_script_path / 'patches' / self.state['spoiler_log']).rename(pathlib.Path(self.output_path) / self.state['spoiler_log'])
-            spoiler_uri = self.base_uri + self.state['spoiler_log']
-            await self.send_message(f'Here is the spoiler log: {spoiler_uri}')
-            self.state['spoiler_sent'] = True
-            await self.set_raceinfo(f'Spoiler log: {spoiler_uri}', prefix=False)
+        if not self.state.get('spoiler_sent', False):
+            if 'seed_id' in self.state:
+                resp = requests.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
+                resp.raise_for_status()
+                self.state['spoiler_sent'] = True
+            else:
+                if 'spoiler_log_path' in self.state:
+                    (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).rename(pathlib.Path(self.output_path) / self.state['spoiler_log_path'])
+                    spoiler_uri = self.base_uri + self.state['spoiler_log_path']
+                    await self.send_message(f'Here is the spoiler log: {spoiler_uri}')
+                    self.state['spoiler_sent'] = True
+                    await self.set_raceinfo(f'Spoiler log: {spoiler_uri}', prefix=False)
 
     def _race_in_progress(self):
         return self.data.get('status').get('value') in ('pending', 'in_progress')

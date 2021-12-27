@@ -12,6 +12,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='RandoBot, because OoTR seeds weren\'t scary enough already.',
     )
+    parser.add_argument('ootr_api_key_path', type=str, help='path to file containing ootrandomizer.com API key')
     parser.add_argument('category_slug', type=str, help='racetime.gg category')
     parser.add_argument('client_id', type=str, help='racetime.gg client ID')
     parser.add_argument('client_secret_path', type=str, help='path to file containing racetime.gg client secret')
@@ -41,10 +42,13 @@ def main():
     if args.insecure:
         RandoBot.racetime_secure = False
 
+    with open(args.ootr_api_key_path) as ootr_api_key_f:
+        ootr_api_key = ootr_api_key_f.read().strip()
     with open(args.client_secret_path) as client_secret_f:
         client_secret = client_secret_f.read().strip()
 
     inst = RandoBot(
+        ootr_api_key=ootr_api_key,
         rsl_script_path=args.rsl_script_path,
         output_path=args.output_path,
         base_uri=args.base_uri,

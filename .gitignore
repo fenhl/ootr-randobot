@@ -1,4 +1,5 @@
 *.egg-info
 __pycache__
 
-/assets/client-secret.txt
+/assets/ootr-api-key.txt
+/assets/racetime-client-secret.txt
