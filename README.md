@@ -16,7 +16,7 @@ possible to use this bot without suitable API access.
 * Python 3.7 or greater
 * [requests](https://pypi.org/project/requests/)
 * [lazyjson](https://github.com/fenhl/lazyjson)
-* A copy of [the RSL script](https://github.com/matthewkirby/plando-random-settings)'s `release` branch. By default, the bot expects this to be in `/opt/git/github.com/matthewkirby/plando-random-settings/branch/release`, you can use the `--rsl_script_path` option to change this.
+* A copy of [the RSL script](https://github.com/matthewkirby/plando-random-settings), pointing to the latest release whose randomizer version is supported by the website. The bot will automatically keep this up to date. By default, the bot expects this to be in `/usr/local/share/rslbot/plando-random-settings`, you can use the `--rsl_script_path` option to change this.
     * A ROM of *The Legend of Zelda: Ocarina of Time* (version 1.0, NTSC) at the subpath `data/oot-ntscu-1.0.z64`.
 * A web server that can serve the patch files and spoiler logs for multiworld and archived seeds from the output directory (which is `/var/www/ootr.fenhl.net/seed` by default and can be changed using `--output_path`).
 

@@ -367,6 +367,52 @@ class RandoHandler(RaceHandler):
         """
         Generate a seed and send it to the race room.
         """
+        # update the RSL script if possible
+        process = await asyncio.create_subprocess_exec('git', 'fetch', cwd=self.rsl_script_path)
+        exit_code = await process.wait()
+        if exit_code != 0:
+            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
+            return
+        process = await asyncio.create_subprocess_exec('git', 'rev-parse', 'HEAD', stdout=asyncio.subprocess.PIPE, cwd=self.rsl_script_path)
+        local_commit, _ = await process.communicate()
+        if process.returncode != 0:
+            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
+            return
+        process = await asyncio.create_subprocess_exec('git', 'rev-parse', 'origin/release', stdout=asyncio.subprocess.PIPE, cwd=self.rsl_script_path)
+        latest_commit, _ = await process.communicate()
+        if process.returncode != 0:
+            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
+            return
+        if local_commit == latest_commit:
+            base_version = None # parse from local version.py later if needed
+        else:
+            resp = requests.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key', self.ootr_api_key})
+            resp.raise_for_status()
+            latest_web_version = resp.json()['currentlyActiveVersion']
+            process = await asyncio.create_subprocess_exec('git', 'show', 'origin/release:version.py', stdout=asyncio.subprocess.PIPE, encoding='utf-8', cwd=self.rsl_script_path)
+            remote_version_f, _ = await process.communicate()
+            if process.returncode != 0:
+                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
+                return
+            for line in remote_version_f.splitlines()
+                if line.startswith('randomizer_version ='):
+                    rando_version = line.split("'")[1]
+                    base_version = rando_version.split(' ')[0]
+                    break
+            else:
+                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
+                return
+            if base_version == latest_web_version: # there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
+                process = await asyncio.create_subprocess_exec('git', 'pull', cwd=self.rsl_script_path)
+                exit_code = await process.wait()
+                if exit_code != 0:
+                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to update the RSL script, please notify Fenhl)')
+                    return
+            else:
+                await self.send_message(f'Warning: the latest version of the randomizer is not yet available on the website. Rolling on the previous version instead…') #TODO roll locally instead?
+                base_version = None
+
+        # run the RSL script
         args = [sys.executable, 'RandomSettingsGenerator.py']
         if preset != 'league':
             args.append(f'--override={preset}_override.json')
@@ -374,7 +420,6 @@ class RandoHandler(RaceHandler):
             args.append('--no_seed')
         else:
             args.append(f'--worldcount={world_count}')
-
         try:
             process = await asyncio.create_subprocess_exec(*args, cwd=self.rsl_script_path)
             exit_code = await process.wait()
@@ -393,15 +438,17 @@ class RandoHandler(RaceHandler):
             await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (RSL script missing, please notify Fenhl)')
             return
 
+        # roll the seed (if compatible with web) or copy it to www-data (if rolled locally)
         if world_count == 1:
-            with (self.rsl_script_path / 'version.py').open() as version_f:
-                for line in version_f:
-                    if line.startswith('randomizer_version ='):
-                        rando_version = line.split("'")[1]
-                        base_version = rando_version.split(' ')[0]
-                        break
-                else:
-                    raise RuntimeError('could not parse randomizer version from plando-random-settings version file')
+            if base_version is None:
+                with (self.rsl_script_path / 'version.py').open() as version_f:
+                    for line in version_f:
+                        if line.startswith('randomizer_version ='):
+                            rando_version = line.split("'")[1]
+                            base_version = rando_version.split(' ')[0]
+                            break
+                    else:
+                        raise RuntimeError('could not parse randomizer version from plando-random-settings version file')
             with (self.rsl_script_path / 'data' / 'randomizer_settings.json').open() as rando_settings_f:
                 rando_settings = json.load(rando_settings_f)
             with open(rando_settings['distribution_file']) as distribution_f:
@@ -430,12 +477,14 @@ class RandoHandler(RaceHandler):
             with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open() as f:
                 self.state['file_hash'] = json.load(f)['file_hash']
 
+        # send seed link
         await self.send_message(
             '%(reply_to)s, here is your seed: %(seed_uri)s'
             % {'reply_to': reply_to or 'Okay', 'seed_uri': seed_uri}
         )
         await self.set_raceinfo(f'{self.presets[preset]["info"]} | Seed: {seed_uri}', overwrite=preset == 'league', prefix=False)
 
+        # update race info and seed archive
         with contextlib.suppress(Exception):
             if 'seed_id' in self.state:
                 while True:
@@ -462,6 +511,7 @@ class RandoHandler(RaceHandler):
         with contextlib.suppress(Exception):
             await self.send_message(f'The hash is {", ".join(self.state["file_hash"])}.')
 
+        # prevent rolling another seed in this room
         self.state['seed_rolled'] = True
 
     async def send_presets(self):
