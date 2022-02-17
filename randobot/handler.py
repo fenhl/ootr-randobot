@@ -454,89 +454,99 @@ class RandoHandler(RaceHandler):
                 base_version = None
 
         # run the RSL script
-        args = [sys.executable, 'RandomSettingsGenerator.py']
-        if preset != 'league':
-            args.append(f'--override={preset}_override.json')
-        if world_count != 1:
-            args.append(f'--worldcount={world_count}')
-        if not generate_locally:
-            args.append('--no_seed')
-        try:
-            process = await asyncio.create_subprocess_exec(*args, cwd=self.rsl_script_path)
-            exit_code = await process.wait()
-            if exit_code == 0:
-                pass
-            elif exit_code == 1:
-                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (RSL script crashed, please notify Fenhl)')
+        outer_tries = 1 if generate_locally else 5 # when generating locally, retries are already handled by the RSL script
+        for _ in range(outer_tries):
+            args = [sys.executable, 'RandomSettingsGenerator.py']
+            if preset != 'league':
+                args.append(f'--override={preset}_override.json')
+            if world_count != 1:
+                args.append(f'--worldcount={world_count}')
+            if not generate_locally:
+                args.append('--no_seed')
+            try:
+                process = await asyncio.create_subprocess_exec(*args, cwd=self.rsl_script_path)
+                exit_code = await process.wait()
+                if exit_code == 0:
+                    pass
+                elif exit_code == 1:
+                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (RSL script crashed, please notify Fenhl)')
+                    return
+                elif exit_code == 2:
+                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Max retries exceeded, please try again or notify Fenhl)')
+                    return
+                else:
+                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Error code {exit_code}, please notify Fenhl)')
+                    return
+            except subprocess.CalledProcessError:
+                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (RSL script missing, please notify Fenhl)')
                 return
-            elif exit_code == 2:
-                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Max retries exceeded, please try again or notify Fenhl)')
-                return
-            else:
-                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Error code {exit_code}, please notify Fenhl)')
-                return
-        except subprocess.CalledProcessError:
-            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (RSL script missing, please notify Fenhl)')
-            return
 
-        # roll the seed (if compatible with web) or copy it to www-data (if rolled locally)
-        if generate_locally:
-            patch_files = list((self.rsl_script_path / 'patches').glob('*.zpfz')) #TODO parse filename from output
-            if len(patch_files) == 0:
-                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Patch file not found, please notify Fenhl)')
-                return
-            elif len(patch_files) > 1:
-                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Multiple patch files found, please notify Fenhl)')
-                return
-            file_name = patch_files[0].name
-            file_stem = patch_files[0].stem
-            self.state['file_stem'] = file_stem
-            patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
-            for extra_output_path in [self.rsl_script_path / 'patches' / f'{file_stem}_Cosmetics.json', self.rsl_script_path / 'patches' / f'{file_stem}_Distribution.json']:
-                if extra_output_path.exists():
-                    extra_output_path.unlink()
-            seed_uri = self.base_uri + file_name
-            self.state['spoiler_log_path'] = file_stem + '_Spoiler.json'
-            with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open() as f:
-                self.state['file_hash'] = json.load(f)['file_hash']
-        else:
-            if base_version is None:
-                with (self.rsl_script_path / 'version.py').open() as version_f:
-                    for line in version_f:
-                        if line.startswith('randomizer_version ='):
-                            rando_version = line.split("'")[1]
-                            base_version = rando_version.split(' ')[0]
+            # roll the seed (if compatible with web) or copy it to www-data (if rolled locally)
+            if generate_locally:
+                patch_files = list((self.rsl_script_path / 'patches').glob('*.zpfz')) #TODO parse filename from output
+                if len(patch_files) == 0:
+                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Patch file not found, please notify Fenhl)')
+                    return
+                elif len(patch_files) > 1:
+                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Multiple patch files found, please notify Fenhl)')
+                    return
+                file_name = patch_files[0].name
+                file_stem = patch_files[0].stem
+                self.state['file_stem'] = file_stem
+                patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
+                for extra_output_path in [self.rsl_script_path / 'patches' / f'{file_stem}_Cosmetics.json', self.rsl_script_path / 'patches' / f'{file_stem}_Distribution.json']:
+                    if extra_output_path.exists():
+                        extra_output_path.unlink()
+                seed_uri = self.base_uri + file_name
+                self.state['spoiler_log_path'] = file_stem + '_Spoiler.json'
+                with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open() as f:
+                    self.state['file_hash'] = json.load(f)['file_hash']
+            else:
+                if base_version is None:
+                    with (self.rsl_script_path / 'version.py').open() as version_f:
+                        for line in version_f:
+                            if line.startswith('randomizer_version ='):
+                                rando_version = line.split("'")[1]
+                                base_version = rando_version.split(' ')[0]
+                                break
+                        else:
+                            raise RuntimeError('could not parse randomizer version from plando-random-settings version file')
+                with (self.rsl_script_path / 'data' / 'randomizer_settings.json').open() as rando_settings_f:
+                    rando_settings = json.load(rando_settings_f)
+                with open(rando_settings['distribution_file']) as distribution_f:
+                    distribution = json.load(distribution_f)
+                for _ in range(3):
+                    resp = requests.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings'])
+                    resp.raise_for_status()
+                    self.state['seed_id'] = str(resp.json()['id'])
+                    seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
+                    for _ in range(self.max_status_checks):
+                        await asyncio.sleep(1)
+                        resp = requests.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
+                        if resp.status_code == 204:
+                            continue
+                        resp.raise_for_status()
+                        seed_details = resp.json()
+                        if seed_details['status'] == 0: # still generating
+                            continue
+                        elif seed_details['status'] == 1: # generated success
+                            self.state['file_hash'] = seed_details['spoilerLog']['file_hash']
+                            break
+                        else: # 2 = generated with link (not possible from API), 3 = failed to generate
+                            seed_uri = None
                             break
                     else:
-                        raise RuntimeError('could not parse randomizer version from plando-random-settings version file')
-            with (self.rsl_script_path / 'data' / 'randomizer_settings.json').open() as rando_settings_f:
-                rando_settings = json.load(rando_settings_f)
-            with open(rando_settings['distribution_file']) as distribution_f:
-                distribution = json.load(distribution_f)
-            resp = requests.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings'])
-            resp.raise_for_status()
-            self.state['seed_id'] = str(resp.json()['id'])
-            seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
-            for _ in range(self.max_status_checks):
-                await asyncio.sleep(1)
-                resp = requests.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
-                if resp.status_code == 204:
-                    continue
-                resp.raise_for_status()
-                seed_details = resp.json()
-                if seed_details['status'] == 0: # still generating
-                    continue
-                elif seed_details['status'] == 1: # generated success
-                    self.state['file_hash'] = seed_details['spoilerLog']['file_hash']
+                        seed_uri = None # max status checks exceeded
+                    if seed_uri is not None:
+                        break
+                if seed_uri is not None:
                     break
-                else: # 2 = generated with link (not possible from API), 3 = failed to generate
-                    self.state['seed_id'] = None
-                    #TODO retry automatically (for up to 3 total attempts); if all 3 attempts fail, roll new settings (for up to 5 total plandos)
-                    await self.send_message(
-                        'Sorry, but it looks like the seed failed to generate. Use '
-                        '!seed to try again.'
-                    )
-                    return
+        if seed_uri is None:
+            await self.send_message(
+                'Sorry, but it looks like the seed failed to generate. Use '
+                '!seed to try again.'
+            )
+            return
 
         # update race info and seed archive
         with contextlib.suppress(Exception):
