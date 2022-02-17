@@ -457,6 +457,7 @@ class RandoHandler(RaceHandler):
             resp.raise_for_status()
             self.state['seed_id'] = str(resp.json()['id'])
             seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
+            #TODO wait for the seed to generate, retry if it fails (for up to 3 total attempts); if all 3 attempts fail, roll new settings (for up to 5 total plandos)
         else:
             patch_files = list((self.rsl_script_path / 'patches').glob('*.zpfz')) #TODO parse filename from output
             if len(patch_files) == 0:
@@ -482,7 +483,9 @@ class RandoHandler(RaceHandler):
             '%(reply_to)s, here is your seed: %(seed_uri)s'
             % {'reply_to': reply_to or 'Okay', 'seed_uri': seed_uri}
         )
-        await self.set_raceinfo(f'{self.presets[preset]["info"]} | Seed: {seed_uri}', overwrite=preset == 'league', prefix=False)
+        await self.set_bot_raceinfo(f'{self.presets[preset]["info"]} | Seed: {seed_uri}')
+        self.state['preset'] = preset
+        self.state['seed_uri'] = seed_uri
 
         # update race info and seed archive
         with contextlib.suppress(Exception):
@@ -534,7 +537,8 @@ class RandoHandler(RaceHandler):
                     spoiler_uri = self.base_uri + self.state['spoiler_log_path']
                     await self.send_message(f'Here is the spoiler log: {spoiler_uri}')
                     self.state['spoiler_sent'] = True
-                    await self.set_raceinfo(f'Spoiler log: {spoiler_uri}', prefix=False)
+                    if 'preset' in self.state and 'seed_uri' in self.state:
+                        await self.set_bot_raceinfo(f'{self.presets[self.state["preset"]]["info"]} | Seed: {self.state["seed_uri"]} | Spoiler log: {spoiler_uri}')
 
     def _race_in_progress(self):
         return self.data.get('status').get('value') in ('pending', 'in_progress')
