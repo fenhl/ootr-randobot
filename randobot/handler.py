@@ -6,6 +6,7 @@ import datetime
 import json
 import pathlib
 import re
+import shlex
 import subprocess
 
 import requests # PyPI: requests
@@ -16,6 +17,41 @@ from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
 DATA = lazyjson.File('/usr/local/share/fenhl/ootr-web.json')
 GEN_LOCK = asyncio.Lock()
+
+HASH_EMOJI = {
+    'Beans': 'HashBeans',
+    'Big Magic': 'HashBigMagic',
+    'Bombchu': 'HashBombchu',
+    'Boomerang': 'HashBoomerang',
+    'Boss Key': 'HashBossKey',
+    'Bottled Fish': 'HashBottledFish',
+    'Bottled Milk': 'HashBottledMilk',
+    'Bow': 'HashBow',
+    'Compass': 'HashCompass',
+    'Cucco': 'HashCucco',
+    'Deku Nut': 'HashDekuNut',
+    'Deku Stick': 'HashDekuStick',
+    'Fairy Ocarina': 'HashFairyOcarina',
+    'Frog': 'HashFrog',
+    'Gold Scale': 'HashGoldScale',
+    'Heart Container': 'HashHeart',
+    'Hover Boots': 'HashHoverBoots',
+    'Kokiri Tunic': 'HashKokiriTunic',
+    'Lens of Truth': 'HashLensOfTruth',
+    'Longshot': 'HashLongshot',
+    'Map': 'HashMap',
+    'Mask of Truth': 'HashMaskOfTruth',
+    'Master Sword': 'HashMasterSword',
+    'Megaton Hammer': 'HashHammer',
+    'Mirror Shield': 'HashMirrorShield',
+    'Mushroom': 'HashMushroom',
+    'Saw': 'HashSaw',
+    'Silver Gauntlets': 'HashSilvers',
+    'Skull Token': 'HashSkullToken',
+    'Slingshot': 'HashSlingshot',
+    'SOLD OUT': 'HashSoldOut',
+    'Stone of Agony': 'HashStoneOfAgony',
+}
 
 def natjoin(sequence, default):
     if len(sequence) == 0:
@@ -74,14 +110,16 @@ class RandoHandler(RaceHandler):
     RandoBot race handler. Generates seeds, presets, and frustration.
     """
     stop_at = ['cancelled', 'finished']
+    max_status_checks = 50
 
-    def __init__(self, ootr_api_key, rsl_script_path, output_path, base_uri, **kwargs):
+    def __init__(self, ootr_api_key, rsl_script_path, output_path, base_uri, warning_command, **kwargs):
         super().__init__(**kwargs)
 
         self.ootr_api_key = ootr_api_key
         self.rsl_script_path = pathlib.Path(rsl_script_path)
         self.output_path = output_path
         self.base_uri = base_uri
+        self.warning_command = warning_command
         self.presets = {
             'league': {
                 'info': 'Random Settings League',
@@ -367,6 +405,8 @@ class RandoHandler(RaceHandler):
         """
         Generate a seed and send it to the race room.
         """
+        generate_locally = world_count != 1 # the ootrandomizer.com API currently does not support generating multiworld seeds
+
         # update the RSL script if possible
         process = await asyncio.create_subprocess_exec('git', 'fetch', cwd=self.rsl_script_path)
         exit_code = await process.wait()
@@ -394,7 +434,7 @@ class RandoHandler(RaceHandler):
             if process.returncode != 0:
                 await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
                 return
-            for line in remote_version_f.splitlines()
+            for line in remote_version_f.splitlines():
                 if line.startswith('randomizer_version ='):
                     rando_version = line.split("'")[1]
                     base_version = rando_version.split(' ')[0]
@@ -409,17 +449,18 @@ class RandoHandler(RaceHandler):
                     await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to update the RSL script, please notify Fenhl)')
                     return
             else:
-                await self.send_message(f'Warning: the latest version of the randomizer is not yet available on the website. Rolling on the previous version instead…') #TODO roll locally instead?
+                await asyncio.create_subprocess_exec(*shlex.split(self.warning_command.format('webRandoVersion')))
+                generate_locally = True
                 base_version = None
 
         # run the RSL script
         args = [sys.executable, 'RandomSettingsGenerator.py']
         if preset != 'league':
             args.append(f'--override={preset}_override.json')
-        if world_count == 1:
-            args.append('--no_seed')
-        else:
+        if world_count != 1:
             args.append(f'--worldcount={world_count}')
+        if not generate_locally:
+            args.append('--no_seed')
         try:
             process = await asyncio.create_subprocess_exec(*args, cwd=self.rsl_script_path)
             exit_code = await process.wait()
@@ -439,26 +480,7 @@ class RandoHandler(RaceHandler):
             return
 
         # roll the seed (if compatible with web) or copy it to www-data (if rolled locally)
-        if world_count == 1:
-            if base_version is None:
-                with (self.rsl_script_path / 'version.py').open() as version_f:
-                    for line in version_f:
-                        if line.startswith('randomizer_version ='):
-                            rando_version = line.split("'")[1]
-                            base_version = rando_version.split(' ')[0]
-                            break
-                    else:
-                        raise RuntimeError('could not parse randomizer version from plando-random-settings version file')
-            with (self.rsl_script_path / 'data' / 'randomizer_settings.json').open() as rando_settings_f:
-                rando_settings = json.load(rando_settings_f)
-            with open(rando_settings['distribution_file']) as distribution_f:
-                distribution = json.load(distribution_f)
-            resp = requests.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings'])
-            resp.raise_for_status()
-            self.state['seed_id'] = str(resp.json()['id'])
-            seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
-            #TODO wait for the seed to generate, retry if it fails (for up to 3 total attempts); if all 3 attempts fail, roll new settings (for up to 5 total plandos)
-        else:
+        if generate_locally:
             patch_files = list((self.rsl_script_path / 'patches').glob('*.zpfz')) #TODO parse filename from output
             if len(patch_files) == 0:
                 await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Patch file not found, please notify Fenhl)')
@@ -477,28 +499,48 @@ class RandoHandler(RaceHandler):
             self.state['spoiler_log_path'] = file_stem + '_Spoiler.json'
             with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open() as f:
                 self.state['file_hash'] = json.load(f)['file_hash']
-
-        # send seed link
-        await self.send_message(
-            '%(reply_to)s, here is your seed: %(seed_uri)s'
-            % {'reply_to': reply_to or 'Okay', 'seed_uri': seed_uri}
-        )
-        await self.set_bot_raceinfo(f'{self.presets[preset]["info"]} | Seed: {seed_uri}')
-        self.state['preset'] = preset
-        self.state['seed_uri'] = seed_uri
+        else:
+            if base_version is None:
+                with (self.rsl_script_path / 'version.py').open() as version_f:
+                    for line in version_f:
+                        if line.startswith('randomizer_version ='):
+                            rando_version = line.split("'")[1]
+                            base_version = rando_version.split(' ')[0]
+                            break
+                    else:
+                        raise RuntimeError('could not parse randomizer version from plando-random-settings version file')
+            with (self.rsl_script_path / 'data' / 'randomizer_settings.json').open() as rando_settings_f:
+                rando_settings = json.load(rando_settings_f)
+            with open(rando_settings['distribution_file']) as distribution_f:
+                distribution = json.load(distribution_f)
+            resp = requests.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings'])
+            resp.raise_for_status()
+            self.state['seed_id'] = str(resp.json()['id'])
+            seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
+            for _ in range(self.max_status_checks):
+                await asyncio.sleep(1)
+                resp = requests.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
+                if resp.status_code == 204:
+                    continue
+                resp.raise_for_status()
+                seed_details = resp.json()
+                if seed_details['status'] == 0: # still generating
+                    continue
+                elif seed_details['status'] == 1: # generated success
+                    self.state['file_hash'] = seed_details['spoilerLog']['file_hash']
+                    break
+                else: # 2 = generated with link (not possible from API), 3 = failed to generate
+                    self.state['seed_id'] = None
+                    #TODO retry automatically (for up to 3 total attempts); if all 3 attempts fail, roll new settings (for up to 5 total plandos)
+                    await self.send_message(
+                        'Sorry, but it looks like the seed failed to generate. Use '
+                        '!seed to try again.'
+                    )
+                    return
 
         # update race info and seed archive
         with contextlib.suppress(Exception):
             if 'seed_id' in self.state:
-                while True:
-                    resp = requests.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
-                    if resp.status_code == 204:
-                        await asyncio.sleep(1)
-                        continue
-                    resp.raise_for_status()
-                    self.state['file_hash'] = resp.json()['spoilerLog']['file_hash']
-                    break
-
                 #TODO save spoiler log and download patch file for seed archive
 
                 DATA['races'][self.data['slug']] = {
@@ -511,8 +553,16 @@ class RandoHandler(RaceHandler):
                     'fileStem': file_stem,
                     'weights': preset
                 }
-        with contextlib.suppress(Exception):
-            await self.send_message(f'The hash is {", ".join(self.state["file_hash"])}.')
+
+        # send seed link
+        await self.send_message(
+            '%(reply_to)s, here is your seed: %(seed_uri)s'
+            % {'reply_to': reply_to or 'Okay', 'seed_uri': seed_uri}
+        )
+        emoji_hash = ' '.join(HASH_EMOJI.get(item, item) for item in self.state['file_hash'])
+        await self.set_bot_raceinfo(f'{self.presets[preset]["info"]}\n{emoji_hash}\n{seed_uri}')
+        self.state['preset'] = preset
+        self.state['seed_uri'] = seed_uri
 
         # prevent rolling another seed in this room
         self.state['seed_rolled'] = True
@@ -537,8 +587,9 @@ class RandoHandler(RaceHandler):
                     spoiler_uri = self.base_uri + self.state['spoiler_log_path']
                     await self.send_message(f'Here is the spoiler log: {spoiler_uri}')
                     self.state['spoiler_sent'] = True
-                    if 'preset' in self.state and 'seed_uri' in self.state:
-                        await self.set_bot_raceinfo(f'{self.presets[self.state["preset"]]["info"]} | Seed: {self.state["seed_uri"]} | Spoiler log: {spoiler_uri}')
+                    if 'preset' in self.state and 'file_hash' in self.state and 'seed_uri' in self.state:
+                        emoji_hash = ' '.join(HASH_EMOJI.get(item, item) for item in self.state['file_hash'])
+                        await self.set_bot_raceinfo(f'{self.presets[self.state["preset"]]["info"]}\n{emoji_hash}\n{self.state["seed_uri"]}\nSpoiler log: {spoiler_uri}')
 
     def _race_in_progress(self):
         return self.data.get('status').get('value') in ('pending', 'in_progress')

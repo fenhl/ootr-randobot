@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--rsl_script_path', default='/usr/local/share/rslbot/plando-random-settings', help='use the RSL script at this path')
     parser.add_argument('--output_path', default='/var/www/ootr.fenhl.net/seed', help='save patch files to this path')
     parser.add_argument('--base_uri', default='https://ootr.fenhl.net/seed/', help='add the patch filename to this prefix to generate the link')
+    parser.add_argument('--warning_command', default='/opt/night/bin/nightd report /games/zelda/oot/proj/rslbot/{}', help='this command, formatted with a warning ID, is run to warn about minor inconsistencies')
     parser.add_argument('--verbose', '-v', action='store_true', help='verbose output')
     parser.add_argument('--host', type=str, nargs='?', help='change the ractime.gg host (debug only!')
     parser.add_argument('--insecure', action='store_true', help='don\'t use HTTPS (debug only!)')
@@ -52,6 +53,7 @@ def main():
         rsl_script_path=args.rsl_script_path,
         output_path=args.output_path,
         base_uri=args.base_uri,
+        watning_command=args.warning_command,
         category_slug=args.category_slug,
         client_id=args.client_id,
         client_secret=client_secret,

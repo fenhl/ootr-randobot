@@ -7,12 +7,13 @@ class RandoBot(Bot):
     """
     RandoBot base class.
     """
-    def __init__(self, ootr_api_key, rsl_script_path, output_path, base_uri, *args, **kwargs):
+    def __init__(self, ootr_api_key, rsl_script_path, output_path, base_uri, warning_command, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ootr_api_key = ootr_api_key
         self.rsl_script_path = rsl_script_path
         self.output_path = output_path
         self.base_uri = base_uri
+        self.warning_command = warning_command
 
     def get_handler_class(self):
         return RandoHandler
@@ -24,4 +25,5 @@ class RandoBot(Bot):
             'rsl_script_path': self.rsl_script_path,
             'output_path': self.output_path,
             'base_uri': self.base_uri,
+            'warning_command': self.warning_command,
         }
