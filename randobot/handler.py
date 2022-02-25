@@ -15,7 +15,7 @@ import lazyjson # https://github.com/fenhl/lazyjson
 
 from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
-DATA = lazyjson.File('/usr/local/share/fenhl/ootr-web.json')
+DATA = lazyjson.File('/usr/local/share/fenhl/ootr-web.json') # database for the seed archive (https://ootr.fenhl.net/seed)
 GEN_LOCK = asyncio.Lock()
 
 HASH_EMOJI = {
@@ -501,6 +501,10 @@ class RandoHandler(RaceHandler):
                 self.state['spoiler_log_path'] = file_stem + '_Spoiler.json'
                 with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open() as f:
                     self.state['file_hash'] = json.load(f)['file_hash']
+                DATA['races'][self.data['slug']] = {
+                    'fileStem': file_stem,
+                    'weights': preset
+                }
             else:
                 if base_version is None:
                     with (self.rsl_script_path / 'version.py').open() as version_f:
@@ -526,11 +530,29 @@ class RandoHandler(RaceHandler):
                         if resp.status_code == 204:
                             continue
                         resp.raise_for_status()
-                        seed_details = resp.json()
-                        if seed_details['status'] == 0: # still generating
+                        seed_status = resp.json()['status']
+                        if seed_status == 0: # still generating
                             continue
-                        elif seed_details['status'] == 1: # generated success
-                            self.state['file_hash'] = seed_details['spoilerLog']['file_hash']
+                        elif seed_status == 1: # generated success
+                            resp = requests.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
+                            resp.raise_for_status()
+                            seed_details = resp.json()
+                            self.state['file_hash'] = json.loads(seed_details['spoilerLog'])['file_hash'] # spoiler log is double-JSON-encoded in API response
+                            resp = requests.get('https://ootrandomizer.com/api/v2/seed/patch', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
+                            resp.raise_for_status()
+                            file_name = re.fullmatch('attachment; filename=(.+)', resp.headers['Content-Disposition']).group(1)
+                            file_stem = re.fullmatch('attachment; filename=(.+)\\.zpfz?', resp.headers['Content-Disposition']).group(1)
+                            self.state['file_stem'] = file_stem
+                            with (self.output_path / file_name).open('w') as patch_f:
+                                patch_f.write(resp.content)
+                            self.state['spoiler_log_path'] = file_stem + '_Spoiler.json'
+                            with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open('w') as spoiler_f:
+                                spoiler_f.write(seed_details['spoilerLog'])
+                            DATA['races'][self.data['slug']] = {
+                                'seedID': self.state['seed_id'],
+                                'fileStem': file_stem,
+                                'weights': preset
+                            }
                             break
                         else: # 2 = generated with link (not possible from API), 3 = failed to generate
                             seed_uri = None
@@ -547,22 +569,6 @@ class RandoHandler(RaceHandler):
                 '!seed to try again.'
             )
             return
-
-        # update race info and seed archive
-        with contextlib.suppress(Exception):
-            if 'seed_id' in self.state:
-                #TODO save spoiler log and download patch file for seed archive
-
-                DATA['races'][self.data['slug']] = {
-                    'seedID': self.state['seed_id'],
-                    'fileHash': self.state['file_hash'],
-                    'weights': preset
-                }
-            else:
-                DATA['races'][self.data['slug']] = {
-                    'fileStem': file_stem,
-                    'weights': preset
-                }
 
         # send seed link
         await self.send_message(
