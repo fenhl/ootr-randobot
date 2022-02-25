@@ -378,7 +378,7 @@ class RandoHandler(RaceHandler):
             else:
                 world_count = 1
 
-        await self.send_message('Rolling seed…') #TODO also announce position in queue (#5)
+        await self.send_message('Rolling seed…')
         async with GEN_LOCK:
             await self.roll(preset, world_count, reply_to)
 
@@ -483,7 +483,7 @@ class RandoHandler(RaceHandler):
 
             # roll the seed (if compatible with web) or copy it to www-data (if rolled locally)
             if generate_locally:
-                patch_files = list((self.rsl_script_path / 'patches').glob('*.zpfz')) #TODO parse filename from output
+                patch_files = list((self.rsl_script_path / 'patches').glob('*.zpf' if world_count == 1 else '*.zpfz')) #TODO parse filename from output
                 if len(patch_files) == 0:
                     await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Patch file not found, please notify Fenhl)')
                     return
