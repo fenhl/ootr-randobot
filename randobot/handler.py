@@ -407,51 +407,30 @@ class RandoHandler(RaceHandler):
         """
         generate_locally = world_count != 1 # the ootrandomizer.com API currently does not support generating multiworld seeds
 
-        # update the RSL script if possible
-        process = await asyncio.create_subprocess_exec('git', 'fetch', cwd=self.rsl_script_path)
+        # update the RSL script
+        process = await asyncio.create_subprocess_exec('git', 'pull', cwd=self.rsl_script_path)
         exit_code = await process.wait()
         if exit_code != 0:
-            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
+            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to update the RSL script, please notify Fenhl)')
             return
-        process = await asyncio.create_subprocess_exec('git', 'rev-parse', 'HEAD', stdout=asyncio.subprocess.PIPE, cwd=self.rsl_script_path)
-        local_commit, _ = await process.communicate()
-        if process.returncode != 0:
-            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
-            return
-        process = await asyncio.create_subprocess_exec('git', 'rev-parse', 'origin/release', stdout=asyncio.subprocess.PIPE, cwd=self.rsl_script_path)
-        latest_commit, _ = await process.communicate()
-        if process.returncode != 0:
-            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
-            return
-        if local_commit == latest_commit:
-            base_version = None # parse from local version.py later if needed
-        else:
+
+        # check if randomizer version is available on web
+        if not generate_locally:
             resp = requests.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key', self.ootr_api_key})
             resp.raise_for_status()
             latest_web_version = resp.json()['currentlyActiveVersion']
-            process = await asyncio.create_subprocess_exec('git', 'show', 'origin/release:version.py', stdout=asyncio.subprocess.PIPE, encoding='utf-8', cwd=self.rsl_script_path)
-            remote_version_f, _ = await process.communicate()
-            if process.returncode != 0:
-                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
-                return
-            for line in remote_version_f.splitlines():
-                if line.startswith('randomizer_version ='):
-                    rando_version = line.split("'")[1]
-                    base_version = rando_version.split(' ')[0]
-                    break
-            else:
-                await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check for RSL script updates, please notify Fenhl)')
-                return
-            if base_version == latest_web_version: # there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
-                process = await asyncio.create_subprocess_exec('git', 'pull', cwd=self.rsl_script_path)
-                exit_code = await process.wait()
-                if exit_code != 0:
-                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to update the RSL script, please notify Fenhl)')
+            with (self.rsl_script_path / 'version.py').open() as local_version_f:
+                for line in local_version_f:
+                    if line.startswith('randomizer_version ='):
+                        rando_version = line.split("'")[1]
+                        base_version = rando_version.split(' ')[0]
+                        break
+                else:
+                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check the randomizer version, please notify Fenhl)')
                     return
-            else:
+            if base_version != latest_web_version: # there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
                 await asyncio.create_subprocess_exec(*shlex.split(self.warning_command.format('webRandoVersion')))
                 generate_locally = True
-                base_version = None
 
         # run the RSL script
         outer_tries = 1 if generate_locally else 5 # when generating locally, retries are already handled by the RSL script
@@ -506,15 +485,6 @@ class RandoHandler(RaceHandler):
                     'weights': preset
                 }
             else:
-                if base_version is None:
-                    with (self.rsl_script_path / 'version.py').open() as version_f:
-                        for line in version_f:
-                            if line.startswith('randomizer_version ='):
-                                rando_version = line.split("'")[1]
-                                base_version = rando_version.split(' ')[0]
-                                break
-                        else:
-                            raise RuntimeError('could not parse randomizer version from plando-random-settings version file')
                 with (self.rsl_script_path / 'data' / 'randomizer_settings.json').open() as rando_settings_f:
                     rando_settings = json.load(rando_settings_f)
                 with open(rando_settings['distribution_file']) as distribution_f:
