@@ -136,7 +136,7 @@ class RandoHandler(RaceHandler):
     RandoBot race handler. Generates seeds, presets, and frustration.
     """
     stop_at = ['cancelled', 'finished']
-    max_status_checks = 10
+    max_status_checks = 50
 
     def __init__(self, ootr_api_key, rsl_script_path, output_path, base_uri, warning_command, **kwargs):
         super().__init__(**kwargs)
@@ -530,6 +530,7 @@ class RandoHandler(RaceHandler):
                         self.state['seed_id'] = str((await resp.json())['id'])
                     seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
                     for _ in range(self.max_status_checks):
+                        await asyncio.sleep(1)
                         async with SESSION.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}, raise_for_status=False) as resp:
                             if resp.status == 204:
                                 continue
