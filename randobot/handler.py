@@ -439,25 +439,25 @@ class RandoHandler(RaceHandler):
 
         # check if randomizer version is available on web
         if not generate_locally:
-            resp = await SESSION.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key})
-            try:
-                latest_web_version = (await resp.json())['currentlyActiveVersion']
-            except aiohttp.ContentTypeError:
-                # this API endpoint is currently returning HTML instead of the expected JSON, fallback to generating locally when that happens
-                generate_locally = True
-            else:
-                with (self.rsl_script_path / 'version.py').open() as local_version_f:
-                    for line in local_version_f:
-                        if line.startswith('randomizer_version ='):
-                            rando_version = line.split("'")[1]
-                            base_version = rando_version.split(' ')[0]
-                            break
-                    else:
-                        await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check the randomizer version, please notify Fenhl)')
-                        return
-                if base_version != latest_web_version: # there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
-                    await asyncio.create_subprocess_exec(*shlex.split(self.warning_command.format('webRandoVersion')))
+            async with SESSION.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key}) as resp:
+                try:
+                    latest_web_version = (await resp.json())['currentlyActiveVersion']
+                except aiohttp.ContentTypeError:
+                    # this API endpoint is currently returning HTML instead of the expected JSON, fallback to generating locally when that happens
                     generate_locally = True
+                else:
+                    with (self.rsl_script_path / 'version.py').open() as local_version_f:
+                        for line in local_version_f:
+                            if line.startswith('randomizer_version ='):
+                                rando_version = line.split("'")[1]
+                                base_version = rando_version.split(' ')[0]
+                                break
+                        else:
+                            await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check the randomizer version, please notify Fenhl)')
+                            return
+                    if base_version != latest_web_version: # there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
+                        await asyncio.create_subprocess_exec(*shlex.split(self.warning_command.format('webRandoVersion')))
+                        generate_locally = True
 
         # run the RSL script
         outer_tries = 1 if generate_locally else 5 # when generating locally, retries are already handled by the RSL script
@@ -523,27 +523,27 @@ class RandoHandler(RaceHandler):
                     distribution = json.load(distribution_f)
                 plando_files[0].unlink()
                 for _ in range(3):
-                    resp = await SESSION.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings'])
-                    self.state['seed_id'] = str((await resp.json())['id'])
+                    async with SESSION.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings']) as resp:
+                        self.state['seed_id'] = str((await resp.json())['id'])
                     seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
                     for _ in range(self.max_status_checks):
-                        resp = await SESSION.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}, raise_for_status=False)
-                        if resp.status == 204:
-                            continue
-                        resp.raise_for_status()
-                        seed_status = (await resp.json())['status']
+                        async with SESSION.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}, raise_for_status=False) as resp:
+                            if resp.status == 204:
+                                continue
+                            resp.raise_for_status()
+                            seed_status = (await resp.json())['status']
                         if seed_status == 0: # still generating
                             continue
                         elif seed_status == 1: # generated success
-                            resp = await SESSION.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
-                            seed_details = await resp.json()
-                            self.state['file_hash'] = json.loads(seed_details['spoilerLog'])['file_hash'] # spoiler log is double-JSON-encoded in API response
-                            resp = await SESSION.get('https://ootrandomizer.com/api/v2/seed/patch', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
-                            file_name = re.fullmatch('attachment; filename=(.+)', resp.headers['Content-Disposition']).group(1)
-                            file_stem = re.fullmatch('attachment; filename=(.+)\\.zpfz?', resp.headers['Content-Disposition']).group(1)
-                            self.state['file_stem'] = file_stem
-                            with (self.output_path / file_name).open('w') as patch_f:
-                                patch_f.write(await resp.content.read())
+                            async with SESSION.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
+                                seed_details = await resp.json()
+                                self.state['file_hash'] = json.loads(seed_details['spoilerLog'])['file_hash'] # spoiler log is double-JSON-encoded in API response
+                            async with SESSION.get('https://ootrandomizer.com/api/v2/seed/patch', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
+                                file_name = re.fullmatch('attachment; filename=(.+)', resp.headers['Content-Disposition']).group(1)
+                                file_stem = re.fullmatch('attachment; filename=(.+)\\.zpfz?', resp.headers['Content-Disposition']).group(1)
+                                self.state['file_stem'] = file_stem
+                                with (self.output_path / file_name).open('w') as patch_f:
+                                    patch_f.write(await resp.content.read())
                             self.state['spoiler_log_path'] = file_stem + '_Spoiler.json'
                             with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open('w') as spoiler_f:
                                 spoiler_f.write(seed_details['spoilerLog'])
@@ -593,7 +593,8 @@ class RandoHandler(RaceHandler):
     async def send_spoiler(self):
         if not self.state.get('spoiler_sent', False):
             if 'seed_id' in self.state:
-                await SESSION.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
+                async with SESSION.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}):
+                    pass
                 self.state['spoiler_sent'] = True
             else:
                 if 'spoiler_log_path' in self.state:
