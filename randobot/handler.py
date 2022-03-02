@@ -17,19 +17,17 @@ import lazyjson # https://github.com/fenhl/lazyjson
 from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
 class Session:
-    # assume all requests have a rate limit of 5 seconds since the rate limit for the version endpoint is affecting subsequent requests to other endpoints
-    def __init__(self, rate_limit_interval=5):
+    def __init__(self):
         self.inner = aiohttp.ClientSession(headers={'User-Agent': 'rslbot/2.0.2'}, raise_for_status=True)
-        self.last_request = time.monotonic() # assume we just made a request to avoid rate limits after bot restarts
-        self.rate_limit_interval = rate_limit_interval
+        self.next_request = time.monotonic() + 5 # assume we just made a version endpoint request to avoid rate limits after bot restarts
 
     @contextlib.asynccontextmanager
-    async def request(self, method, *args, **kwargs):
+    async def request(self, method, url, *args, **kwargs):
         now = time.monotonic()
-        if now < self.last_request + self.rate_limit_interval:
-            await asyncio.sleep(self.last_request + self.rate_limit_interval - now)
-        async with self.inner.request(method, *args, **kwargs) as resp:
-            self.last_request = time.monotonic()
+        if now < self.next_request:
+            await asyncio.sleep(self.next_request - now)
+        async with self.inner.request(method, url, *args, **kwargs) as resp:
+            self.next_request = time.monotonic() + (5 if url == 'https://ootrandomizer.com/api/version' else 0.5)
             yield resp
 
     @contextlib.asynccontextmanager
@@ -444,7 +442,7 @@ class RandoHandler(RaceHandler):
 
         # check if randomizer version is available on web
         if not generate_locally:
-            async with SESSION.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key}) as resp:
+            async with SESSION.get('https://ootrandomizer.com/api/version', params={'key': self.ootr_api_key, 'branch': 'devRSL'}) as resp:
                 try:
                     latest_web_version = (await resp.json())['currentlyActiveVersion']
                 except aiohttp.ContentTypeError:
