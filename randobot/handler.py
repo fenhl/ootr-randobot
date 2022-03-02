@@ -542,6 +542,7 @@ class RandoHandler(RaceHandler):
                         seed_uri = None # max status checks exceeded
                     if seed_uri is not None:
                         break
+                    await asyncio.sleep(1)
                 if seed_uri is not None:
                     break
         if seed_uri is None:
