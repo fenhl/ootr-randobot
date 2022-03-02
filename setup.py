@@ -15,7 +15,7 @@ setup(
     ],
     url='https://racetime.gg/ootr',
     project_urls={
-        'Source': 'https://github.com/fenhl/ootr-randobot',
+        'Source': 'https://github.com/fenhl/rslbot',
     },
     version='2.0.2',
     install_requires=[
