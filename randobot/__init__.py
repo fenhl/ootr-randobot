@@ -53,7 +53,7 @@ def main():
         rsl_script_path=args.rsl_script_path,
         output_path=args.output_path,
         base_uri=args.base_uri,
-        watning_command=args.warning_command,
+        warning_command=args.warning_command,
         category_slug=args.category_slug,
         client_id=args.client_id,
         client_secret=client_secret,
