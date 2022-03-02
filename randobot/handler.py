@@ -23,19 +23,24 @@ class Session:
         self.last_request = time.monotonic() # assume we just made a request to avoid rate limits after bot restarts
         self.rate_limit_interval = rate_limit_interval
 
+    @contextlib.asynccontextmanager
     async def request(self, method, *args, **kwargs):
         now = time.monotonic()
         if now < self.last_request + self.rate_limit_interval:
             await asyncio.sleep(self.last_request + self.rate_limit_interval - now)
-        resp = self.inner.request(method, *args, **kwargs)
-        self.last_request = time.monotonic()
-        return resp
+        async with self.inner.request(method, *args, **kwargs) as resp:
+            self.last_request = time.monotonic()
+            yield resp
 
+    @contextlib.asynccontextmanager
     async def get(self, *args, **kwargs):
-        return await self.request('GET', *args, **kwargs)
+        async with self.request('GET', *args, **kwargs) as resp:
+            yield resp
 
+    @contextlib.asynccontextmanager
     async def post(self, *args, **kwargs):
-        return await self.request('POST', *args, **kwargs)
+        async with self.request('POST', *args, **kwargs) as resp:
+            yield resp
 
 DATA = lazyjson.File('/usr/local/share/fenhl/ootr-web.json') # database for the seed archive (https://ootr.fenhl.net/seed)
 GEN_LOCK = asyncio.Lock()
@@ -140,7 +145,7 @@ class RandoHandler(RaceHandler):
 
         self.ootr_api_key = ootr_api_key
         self.rsl_script_path = pathlib.Path(rsl_script_path)
-        self.output_path = output_path
+        self.output_path = pathlib.Path(output_path)
         self.base_uri = base_uri
         self.warning_command = warning_command
         self.presets = {
@@ -420,9 +425,9 @@ class RandoHandler(RaceHandler):
         elif self.data.get('status', {}).get('value') == 'cancelled':
             with contextlib.suppress(Exception):
                 del DATA['races'][self.data['slug']]
-                (pathlib.Path(self.output_path) / f'{self.state["file_stem"]}.zpf').unlink(missing_ok=True)
-                (pathlib.Path(self.output_path) / f'{self.state["file_stem"]}.zpfz').unlink(missing_ok=True)
-                (pathlib.Path(self.output_path) / f'{self.state["file_stem"]}_Spoiler.json').unlink(missing_ok=True)
+                (self.output_path / f'{self.state["file_stem"]}.zpf').unlink(missing_ok=True)
+                (self.output_path / f'{self.state["file_stem"]}.zpfz').unlink(missing_ok=True)
+                (self.output_path / f'{self.state["file_stem"]}_Spoiler.json').unlink(missing_ok=True)
 
     async def roll(self, preset, world_count, reply_to):
         """
@@ -439,7 +444,7 @@ class RandoHandler(RaceHandler):
 
         # check if randomizer version is available on web
         if not generate_locally:
-            async with await SESSION.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key}) as resp:
+            async with SESSION.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key}) as resp:
                 try:
                     latest_web_version = (await resp.json())['currentlyActiveVersion']
                 except aiohttp.ContentTypeError:
@@ -499,7 +504,7 @@ class RandoHandler(RaceHandler):
                 file_name = patch_files[0].name
                 file_stem = patch_files[0].stem
                 self.state['file_stem'] = file_stem
-                patch_files[0].rename(pathlib.Path(self.output_path) / file_name)
+                patch_files[0].rename(self.output_path / file_name)
                 for extra_output_path in [self.rsl_script_path / 'patches' / f'{file_stem}_Cosmetics.json', self.rsl_script_path / 'patches' / f'{file_stem}_Distribution.json']:
                     if extra_output_path.exists():
                         extra_output_path.unlink()
@@ -523,11 +528,11 @@ class RandoHandler(RaceHandler):
                     distribution = json.load(distribution_f)
                 plando_files[0].unlink()
                 for _ in range(3):
-                    async with await SESSION.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings']) as resp:
+                    async with SESSION.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings']) as resp:
                         self.state['seed_id'] = str((await resp.json())['id'])
                     seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
                     for _ in range(self.max_status_checks):
-                        async with await SESSION.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}, raise_for_status=False) as resp:
+                        async with SESSION.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}, raise_for_status=False) as resp:
                             if resp.status == 204:
                                 continue
                             resp.raise_for_status()
@@ -535,14 +540,14 @@ class RandoHandler(RaceHandler):
                         if seed_status == 0: # still generating
                             continue
                         elif seed_status == 1: # generated success
-                            async with await SESSION.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
+                            async with SESSION.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
                                 seed_details = await resp.json()
                                 self.state['file_hash'] = json.loads(seed_details['spoilerLog'])['file_hash'] # spoiler log is double-JSON-encoded in API response
-                            async with await SESSION.get('https://ootrandomizer.com/api/v2/seed/patch', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
+                            async with SESSION.get('https://ootrandomizer.com/api/v2/seed/patch', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
                                 file_name = re.fullmatch('attachment; filename=(.+)', resp.headers['Content-Disposition']).group(1)
                                 file_stem = re.fullmatch('attachment; filename=(.+)\\.zpfz?', resp.headers['Content-Disposition']).group(1)
                                 self.state['file_stem'] = file_stem
-                                with (self.output_path / file_name).open('w') as patch_f:
+                                with (self.output_path / file_name).open('wb') as patch_f:
                                     patch_f.write(await resp.content.read())
                             self.state['spoiler_log_path'] = file_stem + '_Spoiler.json'
                             with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open('w') as spoiler_f:
@@ -593,12 +598,12 @@ class RandoHandler(RaceHandler):
     async def send_spoiler(self):
         if not self.state.get('spoiler_sent', False):
             if 'seed_id' in self.state:
-                async with await SESSION.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}):
+                async with SESSION.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}):
                     pass
                 self.state['spoiler_sent'] = True
             else:
                 if 'spoiler_log_path' in self.state:
-                    (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).rename(pathlib.Path(self.output_path) / self.state['spoiler_log_path'])
+                    (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).rename(self.output_path / self.state['spoiler_log_path'])
                     spoiler_uri = self.base_uri + self.state['spoiler_log_path']
                     await self.send_message(f'Here is the spoiler log: {spoiler_uri}')
                     self.state['spoiler_sent'] = True
