@@ -26,7 +26,7 @@ class Session:
     async def request(self, method, *args, **kwargs):
         now = time.monotonic()
         if now < self.last_request + self.rate_limit_interval:
-            await asyncio.sleep(now - self.last_request)
+            await asyncio.sleep(self.last_request + self.rate_limit_interval - now)
         resp = self.inner.request(method, *args, **kwargs)
         self.last_request = time.monotonic()
         return resp
