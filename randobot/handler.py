@@ -17,15 +17,15 @@ import lazyjson # https://github.com/fenhl/lazyjson
 from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
 class Session:
-    RATE_LIMIT_INTERVAL = 5 # assume all requests have a rate limit of 5 seconds since the rate limit for the version endpoint is affecting subsequent requests to other endpoints
-
-    def __init__(self):
+    # assume all requests have a rate limit of 5 seconds since the rate limit for the version endpoint is affecting subsequent requests to other endpoints
+    def __init__(self, rate_limit_interval=5):
         self.inner = aiohttp.ClientSession(headers={'User-Agent': 'rslbot/2.0.2'}, raise_for_status=True)
         self.last_request = time.monotonic() # assume we just made a request to avoid rate limits after bot restarts
+        self.rate_limit_interval = rate_limit_interval
 
     async def request(self, method, *args, **kwargs):
         now = time.monotonic()
-        if now < self.last_request + RATE_LIMIT_INTERVAL:
+        if now < self.last_request + self.rate_limit_interval:
             await asyncio.sleep(now - self.last_request)
         resp = self.inner.request(method, *args, **kwargs)
         self.last_request = time.monotonic()
