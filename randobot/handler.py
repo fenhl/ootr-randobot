@@ -416,7 +416,7 @@ class RandoHandler(RaceHandler):
 
         # check if randomizer version is available on web
         if not generate_locally:
-            resp = requests.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key', self.ootr_api_key})
+            resp = requests.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key})
             resp.raise_for_status()
             latest_web_version = resp.json()['currentlyActiveVersion']
             with (self.rsl_script_path / 'version.py').open() as local_version_f:
