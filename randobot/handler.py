@@ -490,10 +490,16 @@ class RandoHandler(RaceHandler):
                     'weights': preset
                 }
             else:
-                with (self.rsl_script_path / 'data' / 'randomizer_settings.json').open() as rando_settings_f:
-                    rando_settings = json.load(rando_settings_f)
-                with open(rando_settings['distribution_file']) as distribution_f:
+                plando_files = list((self.rsl_script_path / 'data').glob('*.json'))
+                if len(plando_files) == 0:
+                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Plando file not found, please notify Fenhl)')
+                    return
+                elif len(plando_files) > 1:
+                    await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Multiple plando files found, please notify Fenhl)')
+                    return
+                with plando_files[0].open() as distribution_f:
                     distribution = json.load(distribution_f)
+                plando_files[0].unlink()
                 for _ in range(3):
                     resp = requests.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings'])
                     resp.raise_for_status()
