@@ -439,7 +439,7 @@ class RandoHandler(RaceHandler):
 
         # check if randomizer version is available on web
         if not generate_locally:
-            async with SESSION.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key}) as resp:
+            async with await SESSION.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key}) as resp:
                 try:
                     latest_web_version = (await resp.json())['currentlyActiveVersion']
                 except aiohttp.ContentTypeError:
@@ -523,11 +523,11 @@ class RandoHandler(RaceHandler):
                     distribution = json.load(distribution_f)
                 plando_files[0].unlink()
                 for _ in range(3):
-                    async with SESSION.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings']) as resp:
+                    async with await SESSION.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings']) as resp:
                         self.state['seed_id'] = str((await resp.json())['id'])
                     seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
                     for _ in range(self.max_status_checks):
-                        async with SESSION.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}, raise_for_status=False) as resp:
+                        async with await SESSION.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}, raise_for_status=False) as resp:
                             if resp.status == 204:
                                 continue
                             resp.raise_for_status()
@@ -535,10 +535,10 @@ class RandoHandler(RaceHandler):
                         if seed_status == 0: # still generating
                             continue
                         elif seed_status == 1: # generated success
-                            async with SESSION.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
+                            async with await SESSION.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
                                 seed_details = await resp.json()
                                 self.state['file_hash'] = json.loads(seed_details['spoilerLog'])['file_hash'] # spoiler log is double-JSON-encoded in API response
-                            async with SESSION.get('https://ootrandomizer.com/api/v2/seed/patch', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
+                            async with await SESSION.get('https://ootrandomizer.com/api/v2/seed/patch', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}) as resp:
                                 file_name = re.fullmatch('attachment; filename=(.+)', resp.headers['Content-Disposition']).group(1)
                                 file_stem = re.fullmatch('attachment; filename=(.+)\\.zpfz?', resp.headers['Content-Disposition']).group(1)
                                 self.state['file_stem'] = file_stem
@@ -593,7 +593,7 @@ class RandoHandler(RaceHandler):
     async def send_spoiler(self):
         if not self.state.get('spoiler_sent', False):
             if 'seed_id' in self.state:
-                async with SESSION.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}):
+                async with await SESSION.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}):
                     pass
                 self.state['spoiler_sent'] = True
             else:
