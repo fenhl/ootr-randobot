@@ -8,15 +8,38 @@ import pathlib
 import re
 import shlex
 import subprocess
+import time
 
-import requests # PyPI: requests
+import aiohttp # PyPI: aiohttp
 
 import lazyjson # https://github.com/fenhl/lazyjson
 
 from racetime_bot import RaceHandler, monitor_cmd, can_moderate, can_monitor
 
+class Session:
+    RATE_LIMIT_INTERVAL = 5 # assume all requests have a rate limit of 5 seconds since the rate limit for the version endpoint is affecting subsequent requests to other endpoints
+
+    def __init__(self):
+        self.inner = aiohttp.ClientSession(headers={'User-Agent': 'rslbot/2.0.2'}, raise_for_status=True)
+        self.last_request = time.monotonic() # assume we just made a request to avoid rate limits after bot restarts
+
+    async def request(self, method, *args, **kwargs):
+        now = time.monotonic()
+        if now < self.last_request:
+            await asyncio.sleep(now - self.last_request)
+        resp = self.inner.request(method, *args, **kwargs)
+        self.last_request = time.monotonic()
+        return resp
+
+    async def get(self, *args, **kwargs):
+        return await self.request('GET', *args, **kwargs)
+
+    async def post(self, *args, **kwargs):
+        return await self.request('POST', *args, **kwargs)
+
 DATA = lazyjson.File('/usr/local/share/fenhl/ootr-web.json') # database for the seed archive (https://ootr.fenhl.net/seed)
 GEN_LOCK = asyncio.Lock()
+SESSION = Session()
 
 HASH_EMOJI = {
     'Beans': 'HashBeans',
@@ -110,7 +133,7 @@ class RandoHandler(RaceHandler):
     RandoBot race handler. Generates seeds, presets, and frustration.
     """
     stop_at = ['cancelled', 'finished']
-    max_status_checks = 50
+    max_status_checks = 10
 
     def __init__(self, ootr_api_key, rsl_script_path, output_path, base_uri, warning_command, **kwargs):
         super().__init__(**kwargs)
@@ -416,11 +439,10 @@ class RandoHandler(RaceHandler):
 
         # check if randomizer version is available on web
         if not generate_locally:
-            resp = requests.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key})
-            resp.raise_for_status()
+            resp = await SESSION.get('https://ootrandomizer.com/api/version?branch=devRSL', params={'key': self.ootr_api_key})
             try:
-                latest_web_version = resp.json()['currentlyActiveVersion']
-            except requests.exceptions.JSONDecodeError:
+                latest_web_version = (await resp.json())['currentlyActiveVersion']
+            except aiohttp.ContentTypeError:
                 # this API endpoint is currently returning HTML instead of the expected JSON, fallback to generating locally when that happens
                 generate_locally = True
             else:
@@ -501,31 +523,27 @@ class RandoHandler(RaceHandler):
                     distribution = json.load(distribution_f)
                 plando_files[0].unlink()
                 for _ in range(3):
-                    resp = requests.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings'])
-                    resp.raise_for_status()
-                    self.state['seed_id'] = str(resp.json()['id'])
+                    resp = await SESSION.post('https://ootrandomizer.com/api/v2/seed/create', params={'key': self.ootr_api_key, 'version': f'devRSL_{base_version}', 'locked': '1'}, json=distribution['settings'])
+                    self.state['seed_id'] = str((await resp.json())['id'])
                     seed_uri = f'https://ootrandomizer.com/seed/get?id={self.state["seed_id"]}'
                     for _ in range(self.max_status_checks):
-                        await asyncio.sleep(1)
-                        resp = requests.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
-                        if resp.status_code == 204:
+                        resp = await SESSION.get('https://ootrandomizer.com/api/v2/seed/status', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}, raise_for_status=False)
+                        if resp.status == 204:
                             continue
                         resp.raise_for_status()
-                        seed_status = resp.json()['status']
+                        seed_status = (await resp.json())['status']
                         if seed_status == 0: # still generating
                             continue
                         elif seed_status == 1: # generated success
-                            resp = requests.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
-                            resp.raise_for_status()
-                            seed_details = resp.json()
+                            resp = await SESSION.get('https://ootrandomizer.com/api/v2/seed/details', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
+                            seed_details = await resp.json()
                             self.state['file_hash'] = json.loads(seed_details['spoilerLog'])['file_hash'] # spoiler log is double-JSON-encoded in API response
-                            resp = requests.get('https://ootrandomizer.com/api/v2/seed/patch', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
-                            resp.raise_for_status()
+                            resp = await SESSION.get('https://ootrandomizer.com/api/v2/seed/patch', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
                             file_name = re.fullmatch('attachment; filename=(.+)', resp.headers['Content-Disposition']).group(1)
                             file_stem = re.fullmatch('attachment; filename=(.+)\\.zpfz?', resp.headers['Content-Disposition']).group(1)
                             self.state['file_stem'] = file_stem
                             with (self.output_path / file_name).open('w') as patch_f:
-                                patch_f.write(resp.content)
+                                patch_f.write(await resp.content.read())
                             self.state['spoiler_log_path'] = file_stem + '_Spoiler.json'
                             with (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).open('w') as spoiler_f:
                                 spoiler_f.write(seed_details['spoilerLog'])
@@ -542,7 +560,6 @@ class RandoHandler(RaceHandler):
                         seed_uri = None # max status checks exceeded
                     if seed_uri is not None:
                         break
-                    await asyncio.sleep(1)
                 if seed_uri is not None:
                     break
         if seed_uri is None:
@@ -576,8 +593,7 @@ class RandoHandler(RaceHandler):
     async def send_spoiler(self):
         if not self.state.get('spoiler_sent', False):
             if 'seed_id' in self.state:
-                resp = requests.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
-                resp.raise_for_status()
+                await SESSION.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']})
                 self.state['spoiler_sent'] = True
             else:
                 if 'spoiler_log_path' in self.state:
