@@ -459,6 +459,7 @@ class RandoHandler(RaceHandler):
                             await self.send_message(f'Sorry {reply_to or "friend"}, something went wrong while generating the seed. (Failed to check the randomizer version, please notify Fenhl)')
                             return
                     if base_version != latest_web_version: # there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
+                        print(f'web version mismatch: we need {base_version} but latest is {latest_web_version}')
                         await asyncio.create_subprocess_exec(*shlex.split(self.warning_command.format('webRandoVersion')))
                         generate_locally = True
 
