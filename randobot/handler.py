@@ -233,16 +233,22 @@ class RandoHandler(RaceHandler):
         duration, interval = self.state['breaks']
         await asyncio.sleep((interval + isodate.parse_duration(self.data.get('start_delay', 'P0DT00H00M00S')) - datetime.timedelta(minutes=5)).total_seconds())
         while not self.should_stop():
-            asyncio.create_task(self.send_message('@entrants Reminder: Next break in 5 minutes.'))
-            await asyncio.sleep(datetime.timedelta(minutes=5).total_seconds())
+            await asyncio.gather(
+                self.send_message('@entrants Reminder: Next break in 5 minutes.'),
+                asyncio.sleep(datetime.timedelta(minutes=5).total_seconds()),
+            )
             if self.should_stop():
                 break
-            asyncio.create_task(self.send_message(f'@entrants Break time! Please pause for {format_duration(duration)}.'))
-            await asyncio.sleep(duration.total_seconds())
+            await asyncio.gather(
+                self.send_message(f'@entrants Break time! Please pause for {format_duration(duration)}.'),
+                asyncio.sleep(duration.total_seconds()),
+            )
             if self.should_stop():
                 break
-            asyncio.create_task(self.send_message('@entrants Break ended. You may resume playing.'))
-            await asyncio.sleep((interval - duration - datetime.timedelta(minutes=5)).total_seconds())
+            await asyncio.gather(
+                self.send_message('@entrants Break ended. You may resume playing.'),
+                asyncio.sleep((interval - duration - datetime.timedelta(minutes=5)).total_seconds()),
+            )
 
     @monitor_cmd
     async def ex_lock(self, args, message):
