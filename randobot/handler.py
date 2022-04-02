@@ -11,6 +11,7 @@ import subprocess
 import time
 
 import aiohttp # PyPI: aiohttp
+import isodate # PyPI: isodate
 
 import lazyjson # https://github.com/fenhl/lazyjson
 
@@ -230,7 +231,7 @@ class RandoHandler(RaceHandler):
 
     async def break_notifications(self):
         duration, interval = self.state['breaks']
-        await asyncio.sleep((interval - datetime.timedelta(minutes=5)).total_seconds())
+        await asyncio.sleep((interval + isodate.parse_duration(self.data.get('start_delay', 'P0DT00H00M00S')) - datetime.timedelta(minutes=5)).total_seconds())
         while not self.should_stop():
             asyncio.create_task(self.send_message('@entrants Reminder: Next break in 5 minutes.'))
             await asyncio.sleep(datetime.timedelta(minutes=5).total_seconds())
