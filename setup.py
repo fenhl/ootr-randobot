@@ -21,6 +21,7 @@ setup(
     install_requires=[
         'racetime_bot>=1.9.0,<2.0',
         'aiohttp>=3.8.0,<4.0',
+        'isodate>=0.6.1,<0.7',
     ],
     packages=find_packages(),
     entry_points={
