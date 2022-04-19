@@ -194,7 +194,7 @@ class RandoHandler(RaceHandler):
         """
         if self.should_stop():
             return
-        asyncio.create_task(self.heartbeat(), name=f'heartbeat for {self.data.get("name")}')
+        self.heartbeat_task = asyncio.create_task(self.heartbeat(), name=f'heartbeat for {self.data.get("name")}')
         for section in self.data.get('info', '').split(' | '):
             if section.startswith(f'Seed: {self.base_uri}'):
                 self.state['spoiler_log_path'] = section[len(f'Seed: {self.base_uri}'):].split('.zpf')[0] + '_Spoiler.json'
@@ -420,7 +420,7 @@ class RandoHandler(RaceHandler):
         if self.data.get('started_at') is not None:
             if not self.state.get('break_notifications_started') and self.state.get('breaks') is not None:
                 self.state['break_notifications_started'] = True
-                asyncio.create_task(self.break_notifications(), name=f'break notifications for {self.data.get("name")}')
+                self.break_notifications_task = asyncio.create_task(self.break_notifications(), name=f'break notifications for {self.data.get("name")}')
             with contextlib.suppress(Exception):
                 DATA['races'][self.data['slug']]['startTime'] = self.data['started_at']
             if self.data.get('status', {}).get('value') in ('finished', 'cancelled'):
