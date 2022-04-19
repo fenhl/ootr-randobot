@@ -604,14 +604,15 @@ class RandoHandler(RaceHandler):
 
     async def send_spoiler(self):
         if not self.state.get('spoiler_sent', False):
+            if 'spoiler_log_path' in self.state:
+                (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).rename(self.output_path / self.state['spoiler_log_path'])
+                spoiler_uri = self.base_uri + self.state['spoiler_log_path']
             if 'seed_id' in self.state:
                 async with SESSION.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': self.ootr_api_key, 'id': self.state['seed_id']}):
                     pass
                 self.state['spoiler_sent'] = True
             else:
                 if 'spoiler_log_path' in self.state:
-                    (self.rsl_script_path / 'patches' / self.state['spoiler_log_path']).rename(self.output_path / self.state['spoiler_log_path'])
-                    spoiler_uri = self.base_uri + self.state['spoiler_log_path']
                     await self.send_message(f'Here is the spoiler log: {spoiler_uri}')
                     self.state['spoiler_sent'] = True
                     if 'preset' in self.state and 'file_hash' in self.state and 'seed_uri' in self.state:
