@@ -121,7 +121,7 @@ def parse_duration(args, default):
                 's': 'seconds',
                 'm': 'minutes',
                 'h': 'hours',
-                ':': 'default'
+                ':': default
             }[match.group(2)]
             default = {
                 'hours': 'minutes',
