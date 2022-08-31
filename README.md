@@ -1,3 +1,5 @@
+**Note:** This is the racetime.gg bot. The Discord bot is at <https://github.com/matthewkirby/RSLBot>
+
 # RSLbot
 
 This is the [Random Settings League](https://rsl-leaderboard.web.app/) version of [ootr-randobot](https://github.com/deains/ootr-randobot), a [racetime.gg](https://racetime.gg) chat bot application for automatically generating [OoT Randomizer](https://ootrandomizer.com/) seeds in race rooms.
