@@ -456,7 +456,7 @@ class RandoHandler(RaceHandler):
                     # this API endpoint is currently returning HTML instead of the expected JSON, fallback to generating locally when that happens
                     generate_locally = True
                 else:
-                    with (self.rsl_script_path / 'version.py').open() as local_version_f:
+                    with (self.rsl_script_path / 'rslversion.py').open() as local_version_f:
                         for line in local_version_f:
                             if line.startswith('randomizer_version ='):
                                 rando_version = line.split("'")[1]
