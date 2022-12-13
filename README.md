@@ -1,4 +1,4 @@
-**Note:** This is the racetime.gg bot. The Discord bot is at <https://github.com/matthewkirby/RSLBot>
+**Note:** This is an old version of the racetime.gg bot for the Random Settings League. The current version is at <https://github.com/midoshouse/midos.house>. The Discord bot is at <https://github.com/matthewkirby/RSLBot>.
 
 # RSLbot
 
